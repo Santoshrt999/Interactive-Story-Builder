@@ -78,6 +78,13 @@ cd frontend && npm run dev
 - ElevenLabs voice synthesis + Howler.js playback of returned audio URLs
   (`useAudio.playUrl` already wired; backend `/api/media/voice/{character}` returns 501).
 - Curiosity + vocab agents using live Claude (canned versions exist).
+- **Desktop app** (requested 2026-06-09 — _do not implement yet_): package StoryWeaver
+  as a downloadable/installable desktop app while still running the local backend.
+  Likely **Tauri** (lightweight, Rust shell) or **Electron** wrapping the existing
+  Vite frontend; bundle/launch the FastAPI backend as a sidecar (or keep it on
+  localhost) so the app works offline as a single click-to-run experience.
+  Decide: Tauri vs Electron; how to ship/start the Python backend (PyInstaller
+  sidecar vs bundled `uv`); auto-start + port management.
 
 ### Phase 3 (polish)
 - Parent dashboard with real aggregated data (currently basic).
