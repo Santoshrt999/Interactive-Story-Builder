@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Forest world placeholder">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bff0c8"/>
+      <stop offset="1" stop-color="#7fd6a0"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.78" cy="0.22" r="0.3">
+      <stop offset="0" stop-color="#fff7c2"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#sky)"/>
+  <circle cx="998" cy="158" r="220" fill="url(#sun)"/>
+  <circle cx="998" cy="158" r="70" fill="#fff2a8"/>
+  <path d="M0 560 Q 320 470 640 540 T 1280 520 V720 H0 Z" fill="#3fae72"/>
+  <path d="M0 620 Q 380 560 760 610 T 1280 600 V720 H0 Z" fill="#2f9460"/>
+  <g fill="#2c7a55">
+    <polygon points="220,560 150,560 185,360"/>
+    <polygon points="260,560 190,560 225,300"/>
+    <polygon points="300,560 230,560 265,360"/>
+  </g>
+  <g fill="#27694a">
+    <polygon points="1080,580 1000,580 1040,330"/>
+    <polygon points="1130,580 1050,580 1090,380"/>
+  </g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="34" fill="#1f5e42" opacity="0.8">Whispering Woods</text>
+</svg>

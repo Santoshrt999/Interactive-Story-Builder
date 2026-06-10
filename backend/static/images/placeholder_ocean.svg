@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Ocean world placeholder">
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9be7ff"/>
+      <stop offset="0.5" stop-color="#4bb8e8"/>
+      <stop offset="1" stop-color="#1f7fc0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.15" r="0.6">
+      <stop offset="0" stop-color="#e9fbff"/>
+      <stop offset="1" stop-color="#e9fbff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#water)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+  <g fill="#ffffff" opacity="0.5">
+    <circle cx="220" cy="180" r="10"/>
+    <circle cx="300" cy="120" r="6"/>
+    <circle cx="980" cy="220" r="8"/>
+    <circle cx="1060" cy="150" r="5"/>
+    <circle cx="640" cy="90" r="7"/>
+  </g>
+  <path d="M0 600 Q 320 540 640 590 T 1280 580 V720 H0 Z" fill="#f6dca0"/>
+  <g fill="#ff9eb5">
+    <path d="M520 600 q -30 -90 10 -160 q 30 70 0 160 Z"/>
+    <path d="M560 600 q 10 -110 60 -150 q -10 90 -30 150 Z"/>
+  </g>
+  <g fill="#ffd86b">
+    <circle cx="760" cy="560" r="26"/>
+    <path d="M760 534 l8 26 l26 0 l-21 16 l8 26 l-21 -16 l-21 16 l8 -26 l-21 -16 l26 0 Z" fill="#ffb347"/>
+  </g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="34" fill="#0c5a8a" opacity="0.85">Coral Kingdom</text>
+</svg>

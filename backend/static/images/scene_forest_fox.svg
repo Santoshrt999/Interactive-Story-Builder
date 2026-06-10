@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Rusty the Fox in the forest">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bff0c8"/>
+      <stop offset="1" stop-color="#7fd6a0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.22" r="0.35">
+      <stop offset="0" stop-color="#fff7c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="998" cy="158" r="240" fill="url(#glow)"/>  <path d="M0 560 Q 320 500 640 545 T 1280 535 V720 H0 Z" fill="#2c7a55" opacity="0.55"/>
+  <g transform="translate(560,420)"><ellipse cx="60" cy="120" rx="95" ry="60" fill="#e8743b"/><circle cx="60" cy="60" r="62" fill="#f08a4b"/><polygon points="20,18 5,-55 55,5" fill="#e8743b"/><polygon points="100,18 115,-55 65,5" fill="#e8743b"/><circle cx="40" cy="55" r="9" fill="#3a2417"/><circle cx="80" cy="55" r="9" fill="#3a2417"/><polygon points="50,72 70,72 60,86" fill="#3a2417"/><path d="M150 120 Q 230 80 210 170 Q 175 140 150 130 Z" fill="#f5b07a"/></g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="30" fill="#2c7a55" opacity="0.85">Rusty the Fox</text>
+</svg>

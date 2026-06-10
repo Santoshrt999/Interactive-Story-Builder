@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Fern the Deer in the forest">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bff0c8"/>
+      <stop offset="1" stop-color="#7fd6a0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.22" r="0.35">
+      <stop offset="0" stop-color="#fff7c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="998" cy="158" r="240" fill="url(#glow)"/>  <path d="M0 560 Q 320 500 640 545 T 1280 535 V720 H0 Z" fill="#2c7a55" opacity="0.55"/>
+  <g transform="translate(560,390)"><ellipse cx="70" cy="140" rx="90" ry="60" fill="#c98e5a"/><circle cx="70" cy="80" r="48" fill="#d99c66"/><polygon points="45,40 25,-30 50,20" fill="#8a5a2f"/><polygon points="95,40 115,-30 90,20" fill="#8a5a2f"/><circle cx="55" cy="78" r="7" fill="#3a2417"/><circle cx="85" cy="78" r="7" fill="#3a2417"/><ellipse cx="70" cy="95" rx="9" ry="7" fill="#3a2417"/></g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="30" fill="#2c7a55" opacity="0.85">Fern the Deer</text>
+</svg>

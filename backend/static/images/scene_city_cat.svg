@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Mango the Cat in the city">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe6c2"/>
+      <stop offset="1" stop-color="#ffc78a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.22" r="0.35">
+      <stop offset="0" stop-color="#fff7c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="998" cy="158" r="240" fill="url(#glow)"/>  <path d="M0 560 Q 320 500 640 545 T 1280 535 V720 H0 Z" fill="#c97f3a" opacity="0.55"/>
+  <g transform="translate(560,410)"><ellipse cx="70" cy="125" rx="78" ry="55" fill="#f2a94a"/><circle cx="70" cy="68" r="54" fill="#f7bd6b" /><polygon points="35,32 25,-12 65,20" fill="#f2a94a"/><polygon points="105,32 115,-12 75,20" fill="#f2a94a"/><circle cx="52" cy="66" r="8" fill="#2a1a0f"/><circle cx="88" cy="66" r="8" fill="#2a1a0f"/><polygon points="62,80 78,80 70,92" fill="#c2603a"/></g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="30" fill="#c97f3a" opacity="0.85">Mango the Cat</text>
+</svg>

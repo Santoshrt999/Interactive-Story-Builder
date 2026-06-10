@@ -1,0 +1,38 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.local
+
+# ---- uv ----
+.uv/
+
+# ---- Node ----
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Editors ----
+.idea/
+.vscode/
+*.swp
+
+# ---- Generated images ----
+# Ignore FLUX-generated/cached art only...
+backend/static/images/gen_*
+# ...keep the committed placeholder + curated animal scene SVGs
+!backend/static/images/placeholder_*.svg
+!backend/static/images/scene_*.svg

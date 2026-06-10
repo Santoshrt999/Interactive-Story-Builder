@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Splash the Dolphin in the ocean">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfe9ff"/>
+      <stop offset="1" stop-color="#5fb6e6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.22" r="0.35">
+      <stop offset="0" stop-color="#fff7c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="998" cy="158" r="240" fill="url(#glow)"/>  <path d="M0 560 Q 320 500 640 545 T 1280 535 V720 H0 Z" fill="#1d6fa5" opacity="0.55"/>
+  <g transform="translate(520,380)"><path d="M40 160 Q 180 60 320 120 Q 250 150 180 200 Q 120 200 40 160 Z" fill="#5aa9d6"/><path d="M40 160 Q 0 120 30 100 Q 55 130 70 150 Z" fill="#4793c0"/><circle cx="280" cy="120" r="8" fill="#1a3a4a"/><path d="M180 100 Q 210 70 235 95 Q 205 105 190 120 Z" fill="#4793c0"/><path d="M120 195 Q 150 215 175 200 Q 150 195 130 188 Z" fill="#fff" opacity="0.5"/></g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="30" fill="#1d6fa5" opacity="0.85">Splash the Dolphin</text>
+</svg>

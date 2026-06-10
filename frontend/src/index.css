@@ -1,0 +1,199 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   StoryWeaver design system — "twilight storybook" aesthetic.
+   Warm, magical, paper-and-aurora. CSS-first Tailwind v4 theme.
+   ============================================================ */
+
+@theme {
+  --font-display: 'Fredoka', ui-rounded, system-ui, sans-serif;
+  --font-body: 'Quicksand', ui-rounded, system-ui, sans-serif;
+
+  /* Twilight base */
+  --color-night-900: #140d28;
+  --color-night-800: #1b1233;
+  --color-night-700: #241846;
+  --color-night-600: #2f1f5c;
+
+  /* Warm parchment for story text surfaces */
+  --color-parchment: #fdf6e9;
+  --color-parchment-2: #f7ead2;
+  --color-ink: #2c2140;
+
+  /* Magic accents */
+  --color-firefly: #ffd166;
+  --color-blossom: #ff7eb3;
+  --color-aurora: #7c6cff;
+  --color-mint: #5be0a0;
+  --color-sky: #4ec5ff;
+
+  --radius-blob: 2rem;
+
+  --shadow-soft: 0 18px 50px -18px rgba(20, 13, 40, 0.55);
+  --shadow-glow: 0 0 40px -6px rgba(124, 108, 255, 0.6);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--color-parchment);
+    background-color: var(--color-night-900);
+    background-image:
+      radial-gradient(60% 50% at 18% 12%, rgba(124, 108, 255, 0.28), transparent 70%),
+      radial-gradient(55% 45% at 85% 8%, rgba(255, 126, 179, 0.22), transparent 70%),
+      radial-gradient(70% 60% at 50% 110%, rgba(78, 197, 255, 0.18), transparent 70%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Subtle grain texture overlay for depth */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.045;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.05;
+  }
+
+  button {
+    font-family: var(--font-body);
+  }
+
+  /* Larger, friendlier focus ring for accessibility */
+  :focus-visible {
+    outline: 3px solid var(--color-firefly);
+    outline-offset: 3px;
+    border-radius: 0.5rem;
+  }
+
+  ::selection {
+    background: var(--color-blossom);
+    color: var(--color-night-900);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  .text-glow {
+    text-shadow: 0 0 24px rgba(255, 209, 102, 0.45);
+  }
+
+  .glass {
+    background: rgba(36, 24, 70, 0.55);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-light {
+    background: rgba(253, 246, 233, 0.06);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Floating twinkle animation for decorative stars */
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 0.3;
+      transform: scale(0.8);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+  }
+  .animate-twinkle {
+    animation: twinkle 3.5s ease-in-out infinite;
+  }
+
+  @keyframes float-slow {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-12px);
+    }
+  }
+  .animate-float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
+
+  /* Voice waveform pulse bars */
+  @keyframes wave {
+    0%,
+    100% {
+      transform: scaleY(0.35);
+    }
+    50% {
+      transform: scaleY(1);
+    }
+  }
+  .animate-wave {
+    animation: wave 0.9s ease-in-out infinite;
+    transform-origin: bottom;
+  }
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.95);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(1.6);
+      opacity: 0;
+    }
+  }
+  .animate-pulse-ring {
+    animation: pulse-ring 1.6s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+  }
+
+  .scrollbar-soft {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+  .scrollbar-soft::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scrollbar-soft::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 999px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

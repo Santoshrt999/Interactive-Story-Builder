@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Shelly the Turtle in the ocean">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfe9ff"/>
+      <stop offset="1" stop-color="#5fb6e6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.22" r="0.35">
+      <stop offset="0" stop-color="#fff7c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="998" cy="158" r="240" fill="url(#glow)"/>  <path d="M0 560 Q 320 500 640 545 T 1280 535 V720 H0 Z" fill="#1d6fa5" opacity="0.55"/>
+  <g transform="translate(540,400)"><ellipse cx="120" cy="130" rx="120" ry="80" fill="#3f9e6a"/><ellipse cx="120" cy="120" rx="90" ry="58" fill="#56b97f"/><g fill="#2f7a52"><polygon points="120,75 95,110 145,110"/><polygon points="80,120 70,150 105,140"/><polygon points="160,120 170,150 135,140"/></g><circle cx="245" cy="120" r="30" fill="#6cc78e"/><circle cx="252" cy="113" r="6" fill="#1a3a2a"/></g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="30" fill="#1d6fa5" opacity="0.85">Shelly the Turtle</text>
+</svg>

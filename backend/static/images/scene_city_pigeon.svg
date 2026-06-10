@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="Coo the Pigeon in the city">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe6c2"/>
+      <stop offset="1" stop-color="#ffc78a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.22" r="0.35">
+      <stop offset="0" stop-color="#fff7c2" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff7c2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="998" cy="158" r="240" fill="url(#glow)"/>  <path d="M0 560 Q 320 500 640 545 T 1280 535 V720 H0 Z" fill="#c97f3a" opacity="0.55"/>
+  <g transform="translate(560,415)"><ellipse cx="90" cy="110" rx="78" ry="52" fill="#9aa6b8"/><circle cx="55" cy="80" r="32" fill="#aeb9c9"/><circle cx="48" cy="75" r="6" fill="#2a1a0f"/><polygon points="22,80 0,86 22,92" fill="#f0a23b"/><path d="M120 95 Q 170 80 165 130 Q 135 120 110 115 Z" fill="#7e8a9c"/></g>
+  <text x="640" y="690" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="30" fill="#c97f3a" opacity="0.85">Coo the Pigeon</text>
+</svg>

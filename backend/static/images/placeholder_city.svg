@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="City world placeholder">
+  <defs>
+    <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd9a0"/>
+      <stop offset="0.5" stop-color="#ffb3c6"/>
+      <stop offset="1" stop-color="#b18fd6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#dusk)"/>
+  <circle cx="640" cy="240" r="90" fill="#fff3c4" opacity="0.85"/>
+  <g fill="#6c5b9e" opacity="0.85">
+    <rect x="60" y="360" width="120" height="320" rx="6"/>
+    <rect x="220" y="280" width="100" height="400" rx="6"/>
+    <rect x="360" y="420" width="90" height="260" rx="6"/>
+    <rect x="930" y="300" width="110" height="380" rx="6"/>
+    <rect x="1080" y="380" width="120" height="300" rx="6"/>
+  </g>
+  <g fill="#4f4080" opacity="0.9">
+    <rect x="470" y="340" width="130" height="340" rx="6"/>
+    <rect x="640" y="300" width="120" height="380" rx="6"/>
+    <rect x="800" y="380" width="100" height="300" rx="6"/>
+  </g>
+  <g fill="#ffe9a8">
+    <rect x="500" y="370" width="18" height="18"/>
+    <rect x="540" y="370" width="18" height="18"/>
+    <rect x="500" y="420" width="18" height="18"/>
+    <rect x="540" y="420" width="18" height="18"/>
+    <rect x="670" y="340" width="18" height="18"/>
+    <rect x="710" y="340" width="18" height="18"/>
+    <rect x="670" y="400" width="18" height="18"/>
+    <rect x="710" y="400" width="18" height="18"/>
+  </g>
+  <path d="M0 660 Q 320 620 640 650 T 1280 645 V720 H0 Z" fill="#3a2f63"/>
+  <circle cx="430" cy="690" r="22" fill="#2a2350"/>
+  <circle cx="500" cy="690" r="22" fill="#2a2350"/>
+  <rect x="410" y="640" width="110" height="40" rx="10" fill="#ff8fa3"/>
+  <text x="640" y="700" text-anchor="middle" font-family="Comic Sans MS, sans-serif" font-size="32" fill="#fbefff" opacity="0.9">City of Bright Bridges</text>
+</svg>
