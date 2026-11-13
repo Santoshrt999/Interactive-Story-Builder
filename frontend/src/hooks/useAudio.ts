@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Howl } from 'howler';
 import { SpeechQueue, narratorVoice } from '@/lib/speechQueue';
 import { useSettingsStore } from '@/store/settingsStore';
+import { useVoices } from '@/hooks/useVoices';
+import { pickVoice } from '@/lib/voices';
 
 export interface UseAudio {
   /** Narration is audibly playing (not paused, not idle). */
@@ -20,36 +22,6 @@ export interface UseAudio {
   muted: boolean;
 }
 
-/** Names of warm, child-friendly female voices, in order of preference. */
-const PREFERRED_VOICE_NAMES = [
-  'Samantha',
-  'Karen',
-  'Tessa',
-  'Moira',
-  'Google UK English Female',
-  'Microsoft Zira',
-];
-
-/** Heuristic hints that a voice is likely a female English voice. */
-const FEMALE_HINTS = ['female', 'woman', 'girl', 'zira', 'samantha', 'victoria', 'serena', 'fiona'];
-
-/** Pick the softest, friendliest female English voice available. */
-function pickFriendlyVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
-  if (voices.length === 0) return null;
-
-  for (const name of PREFERRED_VOICE_NAMES) {
-    const match = voices.find((v) => v.name.toLowerCase() === name.toLowerCase());
-    if (match) return match;
-  }
-
-  const english = voices.filter((v) => v.lang.toLowerCase().startsWith('en'));
-  const femaleEnglish = english.find((v) =>
-    FEMALE_HINTS.some((hint) => v.name.toLowerCase().includes(hint))
-  );
-  if (femaleEnglish) return femaleEnglish;
-
-  return english[0] ?? voices[0];
-}
 
 /**
  * Audio playback hook.
@@ -74,21 +46,12 @@ export function useAudio(): UseAudio {
   const synthSupported =
     typeof window !== 'undefined' && 'speechSynthesis' in window;
 
-  // Voices load asynchronously; choose one once they're available.
+  // Voices load asynchronously; use the parent's chosen voice, else the most
+  // natural child-friendly one installed (Premium/Enhanced first).
+  const voices = useVoices();
+  const voiceName = useSettingsStore((s) => s.voiceName);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
-
-  useEffect(() => {
-    if (!synthSupported) return;
-    const loadVoices = () => {
-      const voice = pickFriendlyVoice(window.speechSynthesis.getVoices());
-      if (voice) voiceRef.current = voice;
-    };
-    loadVoices();
-    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
-    return () => {
-      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
-    };
-  }, [synthSupported]);
+  voiceRef.current = pickVoice(voices, voiceName);
 
   const queueRef = useRef<SpeechQueue | null>(null);
   const getQueue = useCallback((): SpeechQueue | null => {

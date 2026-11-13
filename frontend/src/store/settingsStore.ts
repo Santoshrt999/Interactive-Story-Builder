@@ -8,8 +8,11 @@ interface SettingsState {
   musicOn: boolean;
   /** `eveningKey` of the last evening the bedtime suggestion was shown. */
   lastBedtimeSuggestion: string | null;
+  /** The storyteller voice a parent picked (SpeechSynthesisVoice.name); null = automatic. */
+  voiceName: string | null;
 
   setBedtime: (v: boolean) => void;
+  setVoiceName: (name: string | null) => void;
   setMusicOn: (v: boolean) => void;
   markSuggested: (key: string) => void;
 }
@@ -20,8 +23,10 @@ export const useSettingsStore = create<SettingsState>()(
       bedtime: false,
       musicOn: true,
       lastBedtimeSuggestion: null,
+      voiceName: null,
 
       setBedtime: (v) => set({ bedtime: v }),
+      setVoiceName: (name) => set({ voiceName: name }),
       setMusicOn: (v) => set({ musicOn: v }),
       markSuggested: (key) => set({ lastBedtimeSuggestion: key }),
     }),
