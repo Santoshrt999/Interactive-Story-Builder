@@ -4,10 +4,13 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useStoryStore } from '@/store/storyStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useMusic } from '@/hooks/useMusic';
 import type { World, Theme, CharacterArchetype } from '@/api/types';
 import { WORLDS, STORY_THEMES, worldPlaceholder } from '@/lib/theme';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { MusicToggle } from '@/components/ui/MusicToggle';
 import { StarField } from '@/components/ui/StarField';
 import { CharacterPicker } from '@/components/story/CharacterPicker';
 import { cn } from '@/lib/cn';
@@ -25,6 +28,8 @@ export function Setup() {
   const navigate = useNavigate();
   const activeProfile = useStoryStore((s) => s.activeProfile);
   const startSession = useStoryStore((s) => s.startSession);
+  const bedtime = useSettingsStore((s) => s.bedtime);
+  const { clearFade } = useMusic();
 
   const [step, setStep] = useState<Step>(0);
   const [name, setName] = useState('');
@@ -63,7 +68,7 @@ export function Setup() {
       theme,
     };
     startMutation.mutate(
-      { child_id: activeProfile.id, ...setup },
+      { child_id: activeProfile.id, ...setup, bedtime },
       {
         onSuccess: (res) => {
           startSession({
@@ -71,7 +76,10 @@ export function Setup() {
             storyId: res.story_id,
             title: res.title,
             setup,
+            bedtime: res.bedtime,
+            maxChapters: res.max_chapters,
           });
+          clearFade(); // a new story: music plays again after a bedtime fade-out
           navigate('/story');
         },
       }
@@ -90,16 +98,19 @@ export function Setup() {
         <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
           ← Home
         </Button>
-        <div className="flex gap-2">
-          {STEP_TITLES.map((_, i) => (
-            <span
-              key={i}
-              className={cn(
-                'h-2 w-10 rounded-full transition-colors',
-                i <= step ? 'bg-firefly' : 'bg-white/15'
-              )}
-            />
-          ))}
+        <div className="flex items-center gap-4">
+          <div className="flex gap-2">
+            {STEP_TITLES.map((_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  'h-2 w-10 rounded-full transition-colors',
+                  i <= step ? 'bg-firefly' : 'bg-white/15'
+                )}
+              />
+            ))}
+          </div>
+          <MusicToggle />
         </div>
       </header>
 

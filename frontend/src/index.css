@@ -133,6 +133,20 @@
     animation: twinkle 3.5s ease-in-out infinite;
   }
 
+  /* Bedtime sky: no pulse or scale, just a very slow, shallow fade. */
+  @keyframes star-breathe {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  .animate-star-breathe {
+    animation: star-breathe 14s ease-in-out infinite;
+  }
+
   @keyframes float-slow {
     0%,
     100% {
@@ -186,6 +200,87 @@
     background: rgba(255, 255, 255, 0.2);
     border-radius: 999px;
   }
+}
+
+/* ============================================================
+   Bedtime mode — set on <html data-mode="bedtime"> by App.tsx.
+   Dimmer, warmer tokens; nothing pure white; nothing bouncing.
+   Unlayered on purpose, so it wins over the theme and utility layers.
+   Text keeps its contrast (measured with the veil below): cream on dark plum
+   ~10:1, dark brown ink on the dim cream pages ~10:1; WCAG AA asks for 4.5:1.
+   ============================================================ */
+
+html[data-mode='bedtime'] {
+  /* Warm plum night */
+  --color-night-900: #150e18;
+  --color-night-800: #1c1320;
+  --color-night-700: #261a27;
+  --color-night-600: #32232f;
+
+  /* Dim cream instead of near-white; `white` itself (text-white, bg-white/10) follows */
+  --color-parchment: #eee1c8;
+  --color-parchment-2: #e2d3b6;
+  --color-ink: #241a12;
+  --color-white: #eee1c8;
+
+  /* Softer accents */
+  --color-firefly: #e0b25a;
+  --color-blossom: #d98aa0;
+  --color-aurora: #9886c4;
+  --color-mint: #7cbf98;
+  --color-sky: #6ea3bb;
+
+  --shadow-soft: 0 18px 50px -18px rgba(10, 5, 8, 0.6);
+  --shadow-glow: 0 0 40px -8px rgba(224, 178, 90, 0.3);
+}
+
+html[data-mode='bedtime'] body {
+  background-image:
+    radial-gradient(60% 50% at 18% 12%, rgba(176, 108, 70, 0.14), transparent 70%),
+    radial-gradient(55% 45% at 85% 8%, rgba(150, 80, 100, 0.12), transparent 70%),
+    radial-gradient(70% 60% at 50% 110%, rgba(110, 90, 140, 0.12), transparent 70%);
+}
+
+/*
+ * Overall brightness about 0.85, as a warm veil on top rather than
+ * `filter: brightness()` on body: a filter would make body the containing block
+ * of every position:fixed element (the star sky, the dialogs) and break them.
+ */
+html[data-mode='bedtime'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: rgb(30 12 0 / 0.15);
+}
+
+html[data-mode='bedtime'] .glass {
+  background: rgba(38, 26, 39, 0.6);
+  border-color: rgba(238, 225, 200, 0.08);
+}
+
+html[data-mode='bedtime'] .glass-light {
+  background: rgba(238, 225, 200, 0.05);
+  border-color: rgba(238, 225, 200, 0.08);
+}
+
+html[data-mode='bedtime'] .text-glow {
+  text-shadow: 0 0 24px rgba(224, 178, 90, 0.2);
+}
+
+html[data-mode='bedtime'] .scrollbar-soft {
+  scrollbar-color: rgba(238, 225, 200, 0.2) transparent;
+}
+
+html[data-mode='bedtime'] .scrollbar-soft::-webkit-scrollbar-thumb {
+  background: rgba(238, 225, 200, 0.2);
+}
+
+/* No bobbing emoji or twinkling stars at bedtime. */
+html[data-mode='bedtime'] .animate-float-slow,
+html[data-mode='bedtime'] .animate-twinkle {
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

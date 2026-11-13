@@ -8,6 +8,7 @@ import { useStoryStream } from '@/hooks/useStoryStream';
 import { useAudio } from '@/hooks/useAudio';
 import { useMusic } from '@/hooks/useMusic';
 import { avatarById } from '@/lib/theme';
+import { chapterEnding, chapterLabel, shouldAskCuriosity } from '@/lib/chapterFlow';
 import type { EndStoryResponse } from '@/api/types';
 import { StoryBook } from '@/components/story/StoryBook';
 import { StoryChoiceCards } from '@/components/story/StoryChoiceCards';
@@ -25,6 +26,8 @@ export function Story() {
   const sessionId = useStoryStore((s) => s.sessionId);
   const storyTitle = useStoryStore((s) => s.storyTitle);
   const setup = useStoryStore((s) => s.setup);
+  const bedtime = useStoryStore((s) => s.bedtime);
+  const maxChapters = useStoryStore((s) => s.maxChapters);
   const activeProfile = useStoryStore((s) => s.activeProfile);
   const curiosityOpen = useStoryStore((s) => s.curiosityOpen);
   const pendingCuriosity = useStoryStore((s) => s.pendingCuriosity);
@@ -142,7 +145,8 @@ export function Story() {
       audio.stop();
       const question = stream.meta?.curiosity_question;
       // Show the curiosity question first (after a choice), then advance.
-      if (question) {
+      // (The final chapter has no choices, so this never opens a question after it.)
+      if (question && shouldAskCuriosity(question, stream.meta?.is_final ?? false)) {
         openCuriosity(question);
       }
       choiceMutation.mutate({ session_id: sessionId, choice });
@@ -168,6 +172,7 @@ export function Story() {
         avatarEmoji={avatarById(activeProfile?.avatar_id ?? '').emoji}
         childName={childName}
         characterName={setup?.character_name ?? certificate.certificate.character_name}
+        bedtime={bedtime}
         onDone={() => navigate('/')}
       />
     );
@@ -201,7 +206,7 @@ export function Story() {
           ← Leave story
         </Button>
         <span className="font-display text-lg text-parchment/80">
-          Chapter {Math.max(1, chapterCount + (stream.done ? 0 : 1))}
+          {chapterLabel(chapterCount + (stream.done ? 0 : 1), maxChapters)}
         </span>
         <div className="flex items-center gap-1">
           <MusicToggle />
@@ -275,6 +280,29 @@ export function Story() {
                   You&apos;re re-reading an earlier page — flip to the latest page to keep the
                   story going.
                 </p>
+              </motion.div>
+            ) : choicesReady && meta && chapterEnding(meta) === 'goodnight' ? (
+              <motion.div
+                key="goodnight"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col gap-3"
+              >
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full text-center leading-snug"
+                  onClick={handleEnd}
+                  disabled={endMutation.isPending}
+                >
+                  {endMutation.isPending ? 'Wrapping up…' : 'Goodnight 🌙 — see your storybook'}
+                </Button>
+                {endMutation.isError && (
+                  <p role="alert" className="px-1 text-blossom">
+                    Something went wrong closing the book. Please try again.
+                  </p>
+                )}
               </motion.div>
             ) : choicesReady && meta ? (
               <motion.div

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useProfiles, useCreateProfile } from '@/hooks/useProfiles';
 import { useStoryStore } from '@/store/storyStore';
+import { useSettingsStore } from '@/store/settingsStore';
+import { eveningKey, shouldSuggestBedtime } from '@/lib/bedtime';
 import {
   AVATARS,
   avatarById,
@@ -14,6 +16,7 @@ import {
 import type { ChildProfile } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { MusicToggle } from '@/components/ui/MusicToggle';
+import { BedtimeSwitch } from '@/components/ui/BedtimeSwitch';
 import { Card } from '@/components/ui/Card';
 import { StarField } from '@/components/ui/StarField';
 import { Spinner } from '@/components/ui/Spinner';
@@ -217,6 +220,17 @@ export function Home() {
   const [showPin, setShowPin] = useState(false);
   const autoCreateTried = useRef(false);
 
+  // In the evening (19:00-06:00), once per evening, switch Bedtime on. Read the
+  // settings fresh, so a second run (React StrictMode) sees the first one's mark.
+  useEffect(() => {
+    const now = new Date();
+    const { lastBedtimeSuggestion, setBedtime, markSuggested } = useSettingsStore.getState();
+    if (shouldSuggestBedtime(now, lastBedtimeSuggestion)) {
+      setBedtime(true);
+      markSuggested(eveningKey(now));
+    }
+  }, []);
+
   // Ensure our beloved default child "Shreyu" always exists.
   useEffect(() => {
     if (!isSuccess || autoCreateTried.current) return;
@@ -245,12 +259,13 @@ export function Home() {
     <div className="relative min-h-dvh">
       <StarField />
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 pt-6">
+      <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-y-2 px-6 pt-6">
         <div className="flex items-center gap-3">
           <span className="animate-float-slow text-4xl">📖</span>
           <span className="font-display text-2xl text-parchment text-glow">StoryWeaver</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <BedtimeSwitch />
           <MusicToggle />
           <Button variant="ghost" size="sm" onClick={() => setShowPin(true)}>
             👪 Parents

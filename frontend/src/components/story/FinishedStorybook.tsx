@@ -1,8 +1,10 @@
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import type { EndStoryResponse } from '@/api/types';
 import type { CompletedChapter } from '@/store/storyStore';
 import { Button } from '@/components/ui/Button';
 import { StarField } from '@/components/ui/StarField';
+import { useMusic } from '@/hooks/useMusic';
 import { StoryBook } from './StoryBook';
 import { StoryCertificate } from './StoryCertificate';
 import { downloadStorybook } from '@/lib/downloadStorybook';
@@ -14,6 +16,8 @@ interface FinishedStorybookProps {
   avatarEmoji: string;
   childName: string;
   characterName: string;
+  /** A bedtime story: the music fades out for the night when the book opens. */
+  bedtime?: boolean;
   onDone: () => void;
 }
 
@@ -28,8 +32,14 @@ export function FinishedStorybook({
   avatarEmoji,
   childName,
   characterName,
+  bedtime = false,
   onDone,
 }: FinishedStorybookProps) {
+  const { fadeOut } = useMusic();
+  useEffect(() => {
+    if (bedtime) fadeOut();
+  }, [bedtime, fadeOut]);
+
   const handleDownload = () => {
     downloadStorybook({
       storyTitle,

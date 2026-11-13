@@ -19,7 +19,11 @@ export interface CompletedChapter {
   vocabulary: string[];
 }
 
-export type StorySetup = Omit<StartStoryBody, 'child_id'>;
+/** The hero the child dreamed up (what the story was started from, minus the child and the mode). */
+export type StorySetup = Omit<StartStoryBody, 'child_id' | 'bedtime'>;
+
+/** A normal story's length; bedtime stories are shorter (the server says how much). */
+export const DEFAULT_MAX_CHAPTERS = 8;
 
 interface StoryState {
   // Profile / session
@@ -28,6 +32,10 @@ interface StoryState {
   storyId: string | null;
   storyTitle: string | null;
   setup: StorySetup | null;
+  /** This story is a bedtime story (3 chapters, ends in a goodnight). */
+  bedtime: boolean;
+  /** How many chapters this story has in all. */
+  maxChapters: number;
 
   // Chapters
   chapters: AssembledChapter[];
@@ -49,6 +57,8 @@ interface StoryState {
     storyId: string;
     title: string;
     setup: StorySetup;
+    bedtime: boolean;
+    maxChapters: number;
   }) => void;
   addChapter: (chapter: AssembledChapter) => void;
   addCompletedChapter: (chapter: CompletedChapter) => void;
@@ -67,6 +77,8 @@ export const useStoryStore = create<StoryState>()(
       storyId: null,
       storyTitle: null,
       setup: null,
+      bedtime: false,
+      maxChapters: DEFAULT_MAX_CHAPTERS,
 
       chapters: [],
       currentChapterIndex: 0,
@@ -79,12 +91,14 @@ export const useStoryStore = create<StoryState>()(
 
       setActiveProfile: (p) => set({ activeProfile: p }),
 
-      startSession: ({ sessionId, storyId, title, setup }) =>
+      startSession: ({ sessionId, storyId, title, setup, bedtime, maxChapters }) =>
         set({
           sessionId,
           storyId,
           storyTitle: title,
           setup,
+          bedtime,
+          maxChapters,
           chapters: [],
           currentChapterIndex: 0,
           choicesMade: [],
@@ -119,6 +133,8 @@ export const useStoryStore = create<StoryState>()(
           storyId: null,
           storyTitle: null,
           setup: null,
+          bedtime: false,
+          maxChapters: DEFAULT_MAX_CHAPTERS,
           chapters: [],
           currentChapterIndex: 0,
           choicesMade: [],

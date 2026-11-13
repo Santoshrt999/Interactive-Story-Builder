@@ -24,6 +24,8 @@ export interface UseMusic {
   duck: (on: boolean) => void;
   /** Fade out over ~2 s and stay quiet until the music is toggled back on. */
   fadeOut: () => void;
+  /** Undo fadeOut: music plays normally again (if it is switched on). A new story, or Bedtime off. */
+  clearFade: () => void;
 }
 
 const NOOP_MUSIC: UseMusic = {
@@ -32,6 +34,7 @@ const NOOP_MUSIC: UseMusic = {
   toggle: () => undefined,
   duck: () => undefined,
   fadeOut: () => undefined,
+  clearFade: () => undefined,
 };
 
 const MusicContext = createContext<UseMusic>(NOOP_MUSIC);
@@ -145,9 +148,12 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     setPlaying(false);
   }, [engine]);
 
+  // The effect above restarts the music once `faded` is false (and stops it if music is off).
+  const clearFade = useCallback(() => setFaded(false), []);
+
   const value = useMemo<UseMusic>(
-    () => ({ playing, enabled: musicOn && !faded, toggle, duck, fadeOut }),
-    [playing, musicOn, faded, toggle, duck, fadeOut]
+    () => ({ playing, enabled: musicOn && !faded, toggle, duck, fadeOut, clearFade }),
+    [playing, musicOn, faded, toggle, duck, fadeOut, clearFade]
   );
 
   return <MusicContext.Provider value={value}>{children}</MusicContext.Provider>;
