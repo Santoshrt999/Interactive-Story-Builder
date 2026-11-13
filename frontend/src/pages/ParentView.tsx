@@ -13,6 +13,7 @@ import { ParentDashboard } from '@/components/dashboard/ParentDashboard';
 import { StoryHistory } from '@/components/dashboard/StoryHistory';
 import { ChildSwitcher } from '@/components/parent/ChildSwitcher';
 import { ManageProfiles } from '@/components/parent/ManageProfiles';
+import { VoicePicker } from '@/components/parent/VoicePicker';
 import { PinPad } from '@/components/parent/PinPad';
 import { Button } from '@/components/ui/Button';
 import { MusicToggle } from '@/components/ui/MusicToggle';
@@ -111,6 +112,7 @@ export function ParentView() {
                     error={history.isError}
                   />
                 </ChildSwitcher>
+                <VoicePicker />
                 <ManageProfiles profiles={profiles} />
               </div>
             )}
