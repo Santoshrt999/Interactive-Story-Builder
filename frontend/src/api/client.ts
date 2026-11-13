@@ -70,7 +70,9 @@ async function request<TResponse>(
     }
     // Only the guarded-route 401 means "the parent lock closed"; a 401 from
     // /parent/unlock (wrong PIN) must not clear the token or fire the event.
-    if (res.status === 401 && detail === PARENT_LOCK_DETAIL) {
+    // A late 401 for a request sent with an old token must not lock out a lock the
+    // parent has since reopened with a fresh one: only act if the token is unchanged.
+    if (res.status === 401 && detail === PARENT_LOCK_DETAIL && getParentToken() === parentToken) {
       clearParentToken();
       window.dispatchEvent(new Event('parent-locked'));
     }

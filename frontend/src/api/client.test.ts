@@ -66,6 +66,27 @@ describe('api client', () => {
     expect(locked).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores a stale 401 once a newer token has replaced the one that was sent', async () => {
+    setParentToken('old-token');
+    fetchMock.mockImplementation(async () => {
+      // The parent unlocks again while this request is in flight.
+      setParentToken('new-token');
+      return jsonResponse(401, { detail: 'parent lock' });
+    });
+
+    await expect(api.dashboard('c1')).rejects.toMatchObject({ status: 401 });
+    expect(getParentToken()).toBe('new-token');
+    expect(locked).not.toHaveBeenCalled();
+  });
+
+  it('still locks on a 401 when a request was sent without a token that is now gone', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(401, { detail: 'parent lock' }));
+
+    await expect(api.dashboard('c1')).rejects.toMatchObject({ status: 401 });
+    expect(getParentToken()).toBeNull();
+    expect(locked).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the token on other 401s (wrong PIN on /unlock)', async () => {
     setParentToken('tok-1');
     fetchMock.mockResolvedValue(jsonResponse(401, { detail: 'wrong pin' }));
