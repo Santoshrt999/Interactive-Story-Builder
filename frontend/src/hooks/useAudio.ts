@@ -10,7 +10,7 @@ export interface UseAudio {
   isPaused: boolean;
   /** Queue a sentence after whatever is already being read. */
   enqueue: (text: string) => void;
-  /** Drop the queue and read this text right away. */
+  /** Drop the queue and read this text (a page, sentence by sentence) right away. */
   speakNow: (text: string) => void;
   pause: () => void;
   resume: () => void;
@@ -138,7 +138,8 @@ export function useAudio(): UseAudio {
       getQueue()?.clear();
       setPaused(false);
       if (mutedRef.current) return;
-      getQueue()?.enqueue(text);
+      // A page is many sentences: one utterance per sentence, not one long one.
+      getQueue()?.enqueueSentences(text);
     },
     [getQueue]
   );

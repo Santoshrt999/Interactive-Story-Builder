@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { SpeechQueue, narratorVoice, type SynthLike } from './speechQueue';
+import { SpeechQueue, narratorVoice, splitSentences, type SynthLike } from './speechQueue';
 
 /** A stand-in for SpeechSynthesisUtterance: just the bits the queue touches. */
 interface FakeUtterance {
@@ -200,6 +200,95 @@ describe('SpeechQueue', () => {
 
     queue.enqueue('b');
     expect(synth.calls[synth.calls.length - 1]).toBe('speak:b');
+  });
+});
+
+describe('SpeechQueue.enqueueSentences', () => {
+  // A flipped-back page is read as one utterance per sentence: long utterances
+  // get cut off by Chrome after ~15 s, especially with network voices.
+  const page = 'The fox ran home. It was dark! Was anyone there? Nobody answered.';
+
+  it('queues a whole page as one utterance per sentence, in order', () => {
+    queue.clear();
+    queue.enqueueSentences(page);
+
+    expect(synth.spoken.map((u) => u.text)).toEqual(['The fox ran home.']);
+    synth.end();
+    synth.end();
+    synth.end();
+    expect(synth.spoken.map((u) => u.text)).toEqual([
+      'The fox ran home.',
+      'It was dark!',
+      'Was anyone there?',
+      'Nobody answered.',
+    ]);
+    expect(synth.calls.filter((c) => c === 'cancel')).toHaveLength(1); // only the clear()
+  });
+
+  it('stays one utterance when there is no sentence-ending punctuation', () => {
+    queue.enqueueSentences('goodnight little fox');
+    expect(synth.spoken.map((u) => u.text)).toEqual(['goodnight little fox']);
+  });
+
+  it('ignores blank text', () => {
+    queue.enqueueSentences('  \n ');
+    expect(synth.calls).toEqual([]);
+  });
+});
+
+describe('splitSentences', () => {
+  it('splits three sentences into three pieces, in order', () => {
+    expect(splitSentences('One fish. Two fish! Red fish?')).toEqual([
+      'One fish.',
+      'Two fish!',
+      'Red fish?',
+    ]);
+  });
+
+  it('splits after an ellipsis', () => {
+    expect(splitSentences('Once upon a time\u2026 there was a fox.')).toEqual([
+      'Once upon a time\u2026',
+      'there was a fox.',
+    ]);
+    expect(splitSentences('Wait... What was that?')).toEqual(['Wait...', 'What was that?']);
+  });
+
+  it('keeps closing quotes and brackets with their sentence', () => {
+    expect(splitSentences('She said, "Run!" Mom ran. (It was fast.) Then it stopped.')).toEqual([
+      'She said, "Run!"',
+      'Mom ran.',
+      '(It was fast.)',
+      'Then it stopped.',
+    ]);
+    expect(splitSentences('\u201CWho is there?\u201D Nobody replied.')).toEqual([
+      '\u201CWho is there?\u201D',
+      'Nobody replied.',
+    ]);
+  });
+
+  it('keeps a dialogue tag with its quote', () => {
+    expect(splitSentences('"Hi!" she said. Then she waved.')).toEqual([
+      '"Hi!" she said.',
+      'Then she waved.',
+    ]);
+  });
+
+  it('does not split inside numbers or without a following space', () => {
+    expect(splitSentences('It weighed 3.5 kilos. Wow!')).toEqual(['It weighed 3.5 kilos.', 'Wow!']);
+  });
+
+  it('treats newlines and repeated spaces as separators', () => {
+    expect(splitSentences('First.\n\nSecond.   Third.')).toEqual(['First.', 'Second.', 'Third.']);
+  });
+
+  it('keeps text without terminal punctuation as one piece', () => {
+    expect(splitSentences('goodnight little fox')).toEqual(['goodnight little fox']);
+    expect(splitSentences('One. and then no ending')).toEqual(['One.', 'and then no ending']);
+  });
+
+  it('returns nothing for empty or whitespace-only text', () => {
+    expect(splitSentences('')).toEqual([]);
+    expect(splitSentences('  \n\t ')).toEqual([]);
   });
 });
 

@@ -14,6 +14,34 @@ export function narratorVoice(bedtime: boolean): { rate: number; pitch: number }
   return bedtime ? { rate: 0.72, pitch: 1.05 } : { rate: 0.85, pitch: 1.15 };
 }
 
+// A sentence ends at . ! ? or … (a run of them), plus any closing quotes or
+// brackets, when whitespace follows. Groups: 1 = the ending, 2 = the whitespace,
+// 3 = the first character of whatever comes next.
+const SENTENCE_BREAK = /([.!?\u2026]+["'\u201D\u2019)\]]*)(\s+)(?=(\S))/g;
+const CLOSING_QUOTE = /["'\u201D\u2019)\]]$/;
+const LOWERCASE = /\p{Ll}/u;
+
+/**
+ * Split text into sentences for the narrator. Used to read a whole page aloud
+ * as one short utterance per sentence, since long utterances get cut off by
+ * Chrome after about 15 seconds. Text with no terminal punctuation stays one
+ * piece; blank text gives no pieces.
+ */
+export function splitSentences(text: string): string[] {
+  const pieces: string[] = [];
+  let start = 0;
+  for (const m of text.matchAll(SENTENCE_BREAK)) {
+    const ending = m[1];
+    // `"Hi!" she said.` is one sentence: a quote closes, then a lowercase tag follows.
+    if (CLOSING_QUOTE.test(ending) && LOWERCASE.test(m[3])) continue;
+    const end = m.index + ending.length;
+    pieces.push(text.slice(start, end));
+    start = end + m[2].length;
+  }
+  pieces.push(text.slice(start));
+  return pieces.map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
 /**
  * Speaks one utterance at a time, in order. A story arrives one sentence every
  * few milliseconds but takes seconds to read aloud, so sentences wait their
@@ -56,6 +84,15 @@ export class SpeechQueue {
     if (!text.trim()) return;
     this.pending.push(text);
     if (!this.current) this.playNext();
+  }
+
+  /**
+   * Queue a longer passage (e.g. a whole page) one sentence at a time.
+   * `enqueue` stays the single-utterance primitive for sentences that are
+   * already split, like the live stream.
+   */
+  enqueueSentences(text: string): void {
+    for (const sentence of splitSentences(text)) this.enqueue(sentence);
   }
 
   /** Stop talking and forget everything that was waiting. */
