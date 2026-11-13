@@ -23,6 +23,9 @@ dependencies = [
     "httpx>=0.27.0",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
 [tool.uv]
 package = true
 
@@ -32,6 +35,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.mypy]
 python_version = "3.12"

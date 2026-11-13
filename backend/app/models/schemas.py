@@ -28,6 +28,7 @@ class ChildProfileOut(BaseModel):
     age: int
     avatar_id: str
     created_at: str
+    is_default: bool
 
 
 # --- Chapter ----------------------------------------------------------------

@@ -18,6 +18,7 @@ def _to_out(p: ChildProfile) -> ChildProfileOut:
         age=p.age,
         avatar_id=p.avatar_id,
         created_at=p.created_at.isoformat(),
+        is_default=p.is_default,
     )
 
 
