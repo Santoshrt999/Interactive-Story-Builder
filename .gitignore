@@ -43,3 +43,6 @@ docs/
 
 # ---- TypeScript build cache (regenerated on every build) ----
 *.tsbuildinfo
+
+# ---- Local launch notes (never commit) ----
+LAUNCH_GUIDE.md

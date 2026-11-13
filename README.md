@@ -220,7 +220,7 @@ cd frontend && npx tsc -p tsconfig.app.json --noEmit # type check
 - 🔜 **Phase 2:** live Claude stories, FLUX image generation, ElevenLabs voices, deeper curiosity & vocab agents (all key-activated, no code changes).
 - 🔮 **Phase 3:** parent dashboard analytics, certificate PDF export, story replay, production hardening.
 
-See [`PROGRESS.md`](PROGRESS.md) for the detailed handoff log, and [`LAUNCH_GUIDE.md`](LAUNCH_GUIDE.md) for deploying (Vercel + Render) and sharing on LinkedIn.
+See [`PROGRESS.md`](PROGRESS.md) for the detailed handoff log.
 
 ---
 
