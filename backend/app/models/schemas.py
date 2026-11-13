@@ -1,9 +1,9 @@
 """Pydantic v2 request/response schemas matching the API contract exactly."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 Archetype = Literal["brave", "curious", "funny", "kind"]
 World = Literal["forest", "ocean", "space", "city"]
@@ -13,11 +13,37 @@ Mood = Literal["wonder", "excitement", "mystery", "joy", "calm"]
 
 # --- Profiles ---------------------------------------------------------------
 
+PROFILE_NAME_MAX = 30
+
+
+def _clean_profile_name(value: str) -> str:
+    """Trim, then require 1-30 characters (shared by create and update)."""
+    value = value.strip()
+    if not 1 <= len(value) <= PROFILE_NAME_MAX:
+        raise ValueError(f"name must be 1-{PROFILE_NAME_MAX} characters")
+    return value
+
+
+# Defined once so create and update can never disagree on what is valid.
+ProfileName = Annotated[str, AfterValidator(_clean_profile_name)]
+ProfileAge = Annotated[int, Field(ge=0, le=12)]
+
+
 class ChildProfileCreate(BaseModel):
-    name: str
-    age: int = Field(ge=4, le=12)
+    name: ProfileName
+    age: ProfileAge
     avatar_id: str
+    # Legacy per-profile PIN: accepted and stored but unused (the household PIN
+    # in `household_settings` replaced it).
     parent_pin: str | None = None
+
+
+class ChildProfileUpdate(BaseModel):
+    """Partial update: omitted (or null) fields are left unchanged."""
+
+    name: ProfileName | None = None
+    age: ProfileAge | None = None
+    avatar_id: str | None = None
 
 
 class ChildProfileOut(BaseModel):

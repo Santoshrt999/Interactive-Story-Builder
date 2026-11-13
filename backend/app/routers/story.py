@@ -5,7 +5,7 @@ import asyncio
 import json
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from app.agents.story_agent import stories_for_child, story_agent
@@ -25,6 +25,7 @@ from app.models.schemas import (
     VocabularyEntryOut,
 )
 from app.services.claude_service import split_sentences
+from app.services.parent_auth import require_parent
 from app.services.redis_service import redis_service
 
 log = get_logger(__name__)
@@ -109,7 +110,11 @@ async def end_story(payload: EndRequest) -> EndResponse:
     )
 
 
-@router.get("/history/{child_id}", response_model=list[StorySummary])
+@router.get(
+    "/history/{child_id}",
+    response_model=list[StorySummary],
+    dependencies=[Depends(require_parent)],
+)
 async def story_history(child_id: str) -> list[StorySummary]:
     stories = await stories_for_child(child_id)
     return [

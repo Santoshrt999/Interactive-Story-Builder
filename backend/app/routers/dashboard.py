@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.models.db import Story, VocabularyEntry, async_session_maker
 from app.models.schemas import (
@@ -11,11 +11,16 @@ from app.models.schemas import (
     DashboardThemes,
     DashboardVocabItem,
 )
+from app.services.parent_auth import require_parent
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
-@router.get("/{child_id}", response_model=DashboardResponse)
+@router.get(
+    "/{child_id}",
+    response_model=DashboardResponse,
+    dependencies=[Depends(require_parent)],
+)
 async def get_dashboard(child_id: str) -> DashboardResponse:
     async with async_session_maker() as db:
         story_rows = (
