@@ -19,6 +19,7 @@ import { PinPad } from '@/components/parent/PinPad';
 import { ProfileForm } from '@/components/parent/ProfileForm';
 import { AvatarChip } from '@/components/ui/AvatarChip';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { MusicToggle } from '@/components/ui/MusicToggle';
 import { BedtimeSwitch } from '@/components/ui/BedtimeSwitch';
 import { StarField } from '@/components/ui/StarField';
@@ -291,15 +292,38 @@ export function Home() {
       </main>
 
       <AnimatePresence>
-        {editing && !lock.unlocked && (
+        {editing && !lock.unlocked && lock.pinSet !== undefined && (
           <PinPad
-            key={lock.pinSet === false ? 'create' : 'unlock'}
-            mode={lock.pinSet === false ? 'create' : 'unlock'}
+            key={lock.pinSet ? 'unlock' : 'create'}
+            mode={lock.pinSet ? 'unlock' : 'create'}
             onUnlocked={() => undefined}
             onClose={() => setEditing(null)}
           />
         )}
       </AnimatePresence>
+
+      {/* Until the server says whether a PIN exists, don't guess a mode. */}
+      {editing && !lock.unlocked && lock.pinSet === undefined && (
+        <div className="fixed inset-0 z-50 grid place-items-center p-4">
+          <Card className="w-full max-w-xs text-center">
+            {lock.statusError ? (
+              <>
+                <p className="text-parchment">We couldn’t reach the server.</p>
+                <div className="mt-4 flex flex-col gap-2">
+                  <Button variant="magic" onClick={() => void lock.refetchStatus()}>
+                    Try again
+                  </Button>
+                  <Button variant="ghost" onClick={() => setEditing(null)}>
+                    Close
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <Spinner label="Checking the lock…" />
+            )}
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

@@ -250,6 +250,9 @@ export function PinPad({ mode: modeProp, onUnlocked, onClose }: PinPadProps) {
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // A held key or an IME composition is not a deliberate press: a held digit
+      // would otherwise fill the whole PIN.
+      if (e.repeat || e.isComposing) return;
       const key = keyToPinKey(e.key);
       if (key) latest.current.apply(key);
     };
