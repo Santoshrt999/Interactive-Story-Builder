@@ -40,3 +40,6 @@ backend/static/images/gen_*
 
 # ---- Local planning docs (never commit) ----
 docs/
+
+# ---- TypeScript build cache (regenerated on every build) ----
+*.tsbuildinfo
