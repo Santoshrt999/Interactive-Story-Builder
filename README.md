@@ -35,7 +35,11 @@ imagination and vocabulary — then hands back a downloadable keepsake storybook
 - 🪄 **Agentic, not a chatbot.** A coordinated loop of specialized agents (story · curiosity · image · vocabulary) with persistent memory and media generation.
 - 📚 **A real book.** Big two-page spread, a square title cover, page-turn by click / arrows / `← →` keys, and flip-back through every chapter.
 - 🦊 **Animal-led adventures.** Each chapter stars a named animal companion with its own scene illustration.
-- 🎙️ **Voice-first & soft narration.** Children speak their choices (Web Speech API); a warm, gentle female voice reads the story aloud.
+- 🎙️ **Voice-first & soft narration.** Children speak their choices (Web Speech API); a warm, gentle voice reads **every sentence in order**, with pause/play and re-reading when you flip back a page. Natural Apple voices (Zoe / Ava Premium) are picked automatically, and parents can choose the storyteller's voice.
+- 🌙 **Bedtime mode.** A dim, warm screen, a slower narrator, a soft lullaby, and a story that wraps up after **3 chapters** with a goodnight ending — suggested automatically in the evening.
+- 📖 **Continue where you left off.** Fell asleep at chapter 2? The home screen offers _Continue_ the next night — even after the app restarts.
+- 🎵 **Generated background music.** A gentle music-box tune (no audio files) that quiets under the narrator, with a 🎵 on/off button on every screen.
+- 🔒 **Real parent corner.** A household PIN checked by the server unlocks per-child insights, **Manage profiles** (rename, age, avatar, delete) and the voice picker.
 - 🧠 **Curiosity over plot.** After each chapter, one open-ended Socratic question — never a yes/no — with an always-available _Skip_.
 - 👶 **Ages 0–12.** Five age tiers from soothing infant lullabies to layered tween moral choices; length and vocabulary scale with age.
 - 🏆 **Keepsake ending.** A finished, flip-through storybook + a **Certificate of Adventure** + a one-click **downloadable, printable storybook**.
@@ -58,9 +62,20 @@ imagination and vocabulary — then hands back a downloadable keepsake storybook
 
 ## 🚀 Quickstart (local, no Docker)
 
-> **Prereqs:** Python 3.12+, Node 20+, and [`uv`](https://docs.astral.sh/uv/)
+> **Prereqs:** Python 3.12+, Node 20+ (via [nvm](https://github.com/nvm-sh/nvm) is fine), and [`uv`](https://docs.astral.sh/uv/)
 > (`curl -LsSf https://astral.sh/uv/install.sh | sh` → installs to `~/.local/bin/uv` on macOS).
 > Redis is **optional** — the backend falls back to an in-memory store automatically.
+
+**One command** — drag `start.sh` into a terminal (or run `./start.sh`):
+
+```bash
+./start.sh
+```
+
+It pulls the latest code, syncs dependencies, starts the backend and frontend with live reload, and opens **http://localhost:5173**. Press **Ctrl+C** to stop both. Logs go to `.logs/`.
+
+<details>
+<summary>Or start the two servers by hand</summary>
 
 **Backend** → http://localhost:8000
 ```bash
@@ -75,8 +90,13 @@ cd frontend
 npm install
 npm run dev
 ```
+</details>
 
-The default storyteller **Shreyu ♥** is created automatically. That's it — start an adventure.
+The default storyteller **Shreyanvi ❤️** is created automatically. That's it — start an adventure.
+
+> 🗣️ **Nicer narrator voice (Mac):** System Settings → Accessibility → **Read & Speak** (called *Spoken Content* on older macOS) → ⓘ next to *System voice* → English → download **Zoe (Premium)** and **Ava (Premium)**. Restart the browser; StoryWeaver uses them automatically.
+>
+> 👪 **Parent corner:** the first visit asks you to create a 4-digit household PIN.
 
 > 🔑 To unlock live AI, copy `backend/.env.example` → `backend/.env` and add keys. No code changes needed — the services detect keys and swap in.
 
@@ -98,14 +118,16 @@ storyweaver/
 │   └── src/
 │       ├── pages/            # Home · Setup · Story · ParentView
 │       ├── components/story/  # StoryBook, ChapterReveal, VoiceInput, Curiosity…
-│       ├── hooks/            # useStoryStream (SSE) · useVoiceInput · useAudio
-│       └── store/            # Zustand session + completed chapters
+│       ├── components/parent/ # PinPad, ManageProfiles, ChildSwitcher, VoicePicker
+│       ├── hooks/            # useStoryStream (SSE) · useAudio · useMusic · useParentLock
+│       ├── lib/              # speechQueue · music engine · voices · bedtime helpers
+│       └── store/            # Zustand session + settings (bedtime, music, voice)
 ├── backend/                  # FastAPI (async) — agentic engine + API
 │   └── app/
 │       ├── main.py           # app, CORS, /static mount, routers under /api
 │       ├── agents/           # story · curiosity · image · vocab
 │       ├── services/         # claude · elevenlabs · image · redis (+ fallbacks)
-│       ├── routers/          # profiles · story · media · dashboard
+│       ├── routers/          # profiles · story · media · dashboard · parent
 │       ├── models/           # SQLAlchemy async models + Pydantic schemas
 │       └── core/             # config (pydantic-settings) · prompts · logging
 │   └── static/images/        # animal scene SVGs + generated art
@@ -165,25 +187,40 @@ Base `/api` — backend `:8000`, frontend `:5173`.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` / `GET` | `/api/profiles/` | Create / list child profiles |
-| `POST` | `/api/story/start` | Begin a story → `{session_id, story_id, title}` |
+| `PATCH` / `DELETE` | `/api/profiles/{id}` | Edit / delete a profile 🔒 (default profile can't be deleted) |
+| `POST` | `/api/story/start` | Begin a story (`bedtime: true` → 3 chapters) → `{session_id, story_id, title, bedtime, max_chapters}` |
+| `GET`  | `/api/story/active/{child_id}` | Latest unfinished story (for _Continue_) |
+| `POST` | `/api/story/resume` | Rebuild an unfinished story's session (survives restarts) |
 | `GET`  | `/api/story/stream/{session_id}` | SSE chapter stream (`sentence` · `meta` · `done`) |
 | `POST` | `/api/story/choice` | Submit a choice (text or voice transcript) |
 | `POST` | `/api/story/curiosity-answer` | Submit a curiosity response |
 | `POST` | `/api/story/end` | Generate ending + certificate |
-| `GET`  | `/api/story/history/{child_id}` | List past stories |
+| `GET`  | `/api/story/history/{child_id}` | List past stories 🔒 |
 | `POST` | `/api/media/image` | Scene image (FLUX; placeholder fallback) |
 | `POST` | `/api/media/voice/{character}` | Character voice (ElevenLabs; Phase 2) |
-| `GET`  | `/api/dashboard/{child_id}` | Parent dashboard data |
+| `GET`  | `/api/dashboard/{child_id}` | Parent dashboard data 🔒 |
+| `GET` / `POST` | `/api/parent/status` · `pin` · `unlock` · `lock` · `change-pin` · `reset-challenge` · `reset` | Household parent PIN; `unlock` returns a 10-minute token sent as `X-Parent-Token` |
+
+🔒 = requires the `X-Parent-Token` header.
+
+### Tests
+
+```bash
+cd backend  && ~/.local/bin/uv run pytest          # API, migration, parent lock, bedtime, resume
+cd frontend && npm test                              # narrator queue, music engine, voices, helpers
+cd frontend && npx tsc -p tsconfig.app.json --noEmit # type check
+```
 
 ---
 
 ## 🗺️ Roadmap
 
 - ✅ **Phase 1 — MVP:** story loop, SSE streaming, voice input, SQLite, the book UI, animal art, age tiers, downloadable keepsake.
+- ✅ **Phase 1.5 — Family-ready:** Bedtime mode, continue-after-restart, generated music, sentence-by-sentence narration with natural voices, editable profiles, server-checked parent PIN.
 - 🔜 **Phase 2:** live Claude stories, FLUX image generation, ElevenLabs voices, deeper curiosity & vocab agents (all key-activated, no code changes).
 - 🔮 **Phase 3:** parent dashboard analytics, certificate PDF export, story replay, production hardening.
 
-See [`PROGRESS.md`](PROGRESS.md) for the detailed handoff log.
+See [`PROGRESS.md`](PROGRESS.md) for the detailed handoff log, and [`LAUNCH_GUIDE.md`](LAUNCH_GUIDE.md) for deploying (Vercel + Render) and sharing on LinkedIn.
 
 ---
 
