@@ -2,14 +2,14 @@ import { motion } from 'framer-motion';
 import type { EndStoryResponse } from '@/api/types';
 import { Button } from '@/components/ui/Button';
 import { StarField } from '@/components/ui/StarField';
-import { nameWithHeart } from '@/lib/theme';
+import { nameWithHeart, type NamedChild } from '@/lib/theme';
 
 interface StoryCertificateProps {
   data: EndStoryResponse;
   avatarEmoji: string;
   onDone: () => void;
-  /** Override the certificate's child name (e.g. to add a ♥ for Shreyu). */
-  childName?: string;
+  /** Who it is awarded to; the default profile gets its ❤️. Without it the certificate's own child name is shown. */
+  child?: NamedChild | null;
   /** When embedded inside a larger page, drop the full-screen wrapper + stars. */
   embedded?: boolean;
   /** Optional download action shown alongside the "another adventure" button. */
@@ -21,12 +21,12 @@ export function StoryCertificate({
   data,
   avatarEmoji,
   onDone,
-  childName,
+  child,
   embedded = false,
   onDownload,
 }: StoryCertificateProps) {
   const { certificate, vocabulary } = data;
-  const displayChild = nameWithHeart(childName ?? certificate.child_name);
+  const displayChild = child ? nameWithHeart(child) : certificate.child_name;
 
   const card = (
       <motion.div

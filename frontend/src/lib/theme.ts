@@ -1,6 +1,6 @@
 // Shared playful constants: avatars, archetypes, worlds, themes, moods.
 
-import type { CharacterArchetype, World, Theme, Mood } from '@/api/types';
+import type { CharacterArchetype, ChildProfile, World, Theme, Mood } from '@/api/types';
 
 export interface AvatarDef {
   id: string;
@@ -114,18 +114,12 @@ export const MOOD_GRADIENT: Record<Mood, { from: string; to: string }> = {
 
 export const PARENT_PIN_LENGTH = 4;
 
-/** The favourite default child. */
-export const DEFAULT_CHILD_NAME = 'Shreyu';
+/** A profile as far as showing its name goes. */
+export type NamedChild = Pick<ChildProfile, 'name' | 'is_default'>;
 
-/** True when the profile/name belongs to our beloved default child. */
-export function isShreyu(name: string | null | undefined): boolean {
-  return (name ?? '').trim().toLowerCase() === DEFAULT_CHILD_NAME.toLowerCase();
-}
-
-/** Render a name with a heart suffix when it is Shreyu's. */
-export function nameWithHeart(name: string | null | undefined): string {
-  const n = (name ?? '').trim();
-  return isShreyu(n) ? `${n} ♥` : n;
+/** The name to show for a child: the household default profile gets a ❤️ (display only, never saved). */
+export function nameWithHeart(profile: NamedChild): string {
+  return profile.is_default ? `${profile.name} ❤️` : profile.name;
 }
 
 /**

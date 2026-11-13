@@ -8,13 +8,15 @@ import { useMusic } from '@/hooks/useMusic';
 import { StoryBook } from './StoryBook';
 import { StoryCertificate } from './StoryCertificate';
 import { downloadStorybook } from '@/lib/downloadStorybook';
+import type { NamedChild } from '@/lib/theme';
 
 interface FinishedStorybookProps {
   data: EndStoryResponse;
   storyTitle: string | null;
   chapters: CompletedChapter[];
   avatarEmoji: string;
-  childName: string;
+  /** The active profile, for the name (and ❤️) on the certificate and download. */
+  child: NamedChild | null;
   characterName: string;
   /** A bedtime story: the music fades out for the night when the book opens. */
   bedtime?: boolean;
@@ -30,7 +32,7 @@ export function FinishedStorybook({
   storyTitle,
   chapters,
   avatarEmoji,
-  childName,
+  child,
   characterName,
   bedtime = false,
   onDone,
@@ -45,7 +47,7 @@ export function FinishedStorybook({
       storyTitle,
       chapters,
       certificate: data,
-      childName,
+      child,
       characterName,
       avatarEmoji,
     });
@@ -83,7 +85,7 @@ export function FinishedStorybook({
           <StoryCertificate
             data={data}
             avatarEmoji={avatarEmoji}
-            childName={childName}
+            child={child}
             embedded
             onDone={onDone}
             onDownload={handleDownload}

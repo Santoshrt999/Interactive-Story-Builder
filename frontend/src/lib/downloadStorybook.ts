@@ -1,12 +1,13 @@
 import type { CompletedChapter } from '@/store/storyStore';
 import type { EndStoryResponse } from '@/api/types';
-import { absoluteAssetUrl, nameWithHeart } from '@/lib/theme';
+import { absoluteAssetUrl, nameWithHeart, type NamedChild } from '@/lib/theme';
 
 interface BuildStorybookArgs {
   storyTitle: string | null;
   chapters: CompletedChapter[];
   certificate: EndStoryResponse;
-  childName: string;
+  /** Who the storybook is for (the active profile); null falls back to the certificate's child name. */
+  child: NamedChild | null;
   characterName: string;
   avatarEmoji: string;
 }
@@ -26,13 +27,14 @@ export function buildStorybookHtml({
   storyTitle,
   chapters,
   certificate,
-  childName,
+  child,
   characterName,
   avatarEmoji,
 }: BuildStorybookArgs): string {
   const cert = certificate.certificate;
   const vocab = certificate.vocabulary;
-  const prettyChild = nameWithHeart(childName);
+  const plainChild = child?.name ?? cert.child_name;
+  const prettyChild = esc(child ? nameWithHeart(child) : cert.child_name);
 
   const chaptersHtml = chapters
     .map((c) => {
@@ -52,7 +54,7 @@ export function buildStorybookHtml({
   const vocabHtml =
     vocab.length > 0
       ? `<section class="vocab">
-          <h2>Words ${esc(childName)} collected 📖</h2>
+          <h2>Words ${esc(plainChild)} collected 📖</h2>
           <ul>
             ${vocab
               .map((v) => `<li><strong>${esc(v.word)}</strong> — ${esc(v.definition)}</li>`)

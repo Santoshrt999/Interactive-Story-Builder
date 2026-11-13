@@ -50,8 +50,6 @@ export function Story() {
   const [viewingLatest, setViewingLatest] = useState(true);
   const narratedCount = useRef(0);
 
-  const childName = activeProfile?.name ?? '';
-
   // Kick off the first stream when we land with a new session. A resumed story
   // has nothing pending: the book opens on its last page and streaming starts
   // with the first choice.
@@ -191,7 +189,7 @@ export function Story() {
         storyTitle={storyTitle}
         chapters={completedChapters}
         avatarEmoji={avatarById(activeProfile?.avatar_id ?? '').emoji}
-        childName={childName}
+        child={activeProfile}
         characterName={setup?.character_name ?? certificate.certificate.character_name}
         bedtime={bedtime}
         onDone={() => navigate('/')}
