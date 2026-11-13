@@ -507,6 +507,73 @@ describe('MusicEngine page visibility', () => {
   });
 });
 
+describe('MusicEngine and browsers that hold audio back (iOS / autoplay policy)', () => {
+  /** A context whose resume() is ignored until `allow()` is called, like WebKit outside a gesture. */
+  function stubbornContext() {
+    const s = setup();
+    s.ctx.state = 'suspended';
+    let allowed = false;
+    s.ctx.resume = () => {
+      s.ctx.resumeCalls++;
+      if (allowed) s.ctx.state = 'running';
+      return Promise.resolve();
+    };
+    return { ...s, allow: () => (allowed = true) };
+  }
+
+  it('contextRunning is false until the context exists and its state is running', () => {
+    const { ctx, engine, allow } = stubbornContext();
+    expect(engine.contextRunning).toBe(false); // nothing created yet
+
+    engine.start('lullaby');
+    expect(engine.contextRunning).toBe(false); // created, but still suspended
+    expect(ctx.state).toBe('suspended');
+
+    allow();
+    engine.start('lullaby'); // a later gesture gets it through
+    expect(engine.contextRunning).toBe(true);
+  });
+
+  it('start() on a suspended context asks the browser to resume again on every later call', () => {
+    const { ctx, engine, allow } = stubbornContext();
+    engine.start('lullaby');
+    expect(ctx.resumeCalls).toBe(1);
+
+    engine.start('lullaby'); // e.g. the pointerup / touchend / click that follows
+    expect(ctx.resumeCalls).toBe(2);
+    engine.start('lullaby');
+    expect(ctx.resumeCalls).toBe(3);
+
+    allow();
+    engine.start('lullaby');
+    expect(ctx.resumeCalls).toBe(4);
+    expect(engine.contextRunning).toBe(true);
+
+    // Running now: further start() calls do not poke the browser again.
+    engine.start('lullaby');
+    expect(ctx.resumeCalls).toBe(4);
+  });
+
+  it('also nudges a context in the iOS "interrupted" state', () => {
+    const { ctx, engine } = setup();
+    (ctx as unknown as { state: string }).state = 'interrupted';
+    expect(engine.contextRunning).toBe(false);
+    engine.start('lullaby');
+    expect(ctx.resumeCalls).toBe(1);
+    expect(engine.contextRunning).toBe(true); // this fake resumes right away
+  });
+
+  it('does not un-suspend the clock while the page is hidden', () => {
+    const { ctx, engine } = setup();
+    engine.start('lullaby');
+    engine.pause();
+    const resumes = ctx.resumeCalls;
+    engine.start('lullaby');
+    expect(ctx.resumeCalls).toBe(resumes);
+    expect(engine.contextRunning).toBe(false);
+  });
+});
+
 describe('MusicEngine without Web Audio', () => {
   it('is a silent no-op when the context cannot be created', () => {
     const factory = vi.fn(() => {
@@ -524,6 +591,8 @@ describe('MusicEngine without Web Audio', () => {
       engine.duck(false);
     }).not.toThrow();
     expect(engine.isRunning).toBe(false);
+    expect(engine.contextRunning).toBe(false);
+    expect(engine.isUnavailable).toBe(true);
     expect(engine.gainValue).toBeCloseTo(MASTER);
     // It does not hammer the factory on every call.
     engine.start('lullaby');

@@ -47,7 +47,12 @@ function createAudioContext(): AudioContext {
   return new Ctor();
 }
 
-const GESTURE_EVENTS = ['pointerdown', 'keydown'] as const;
+/**
+ * Any of these can be the moment a browser lets audio start. On touch screens
+ * `pointerdown` is NOT a user activation (WebKit grants it on `touchend` /
+ * `click`), so the later events matter.
+ */
+const GESTURE_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
 
 /**
  * Owns the one MusicEngine for the app. Nothing is created or played until the
@@ -84,22 +89,24 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     setPlaying(engine.isRunning);
   }, [engine, musicOn, faded, mood]);
 
-  // Start on the first gesture, if music is on.
+  // Start on gestures while music should be playing. Each gesture is another
+  // chance for a browser that held the audio back (iOS) to let it through, so
+  // the listeners stay until the context is actually running. Capture phase,
+  // so a handler that stops propagation cannot hide the gesture from us.
   useEffect(() => {
-    if (gestureSeen.current) return;
+    if (engine.contextRunning) return;
     const detach = () => {
-      for (const type of GESTURE_EVENTS) window.removeEventListener(type, onGesture);
+      for (const type of GESTURE_EVENTS) window.removeEventListener(type, onGesture, true);
     };
     function onGesture() {
       gestureSeen.current = true;
-      detach();
       const { musicOn: on, faded: isFaded, mood: currentMood } = latest.current;
-      if (on && !isFaded) {
-        engine.start(currentMood);
-        setPlaying(engine.isRunning);
-      }
+      if (!on || isFaded) return;
+      engine.start(currentMood); // creates the context, or nudges it awake again
+      setPlaying(engine.isRunning);
+      if (engine.contextRunning || engine.isUnavailable) detach();
     }
-    for (const type of GESTURE_EVENTS) window.addEventListener(type, onGesture);
+    for (const type of GESTURE_EVENTS) window.addEventListener(type, onGesture, true);
     return detach;
   }, [engine]);
 

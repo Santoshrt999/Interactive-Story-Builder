@@ -80,6 +80,20 @@ export class MusicEngine {
   }
 
   /**
+   * The browser has actually let the audio through: the context exists and its
+   * state is 'running'. False while it is still held back (autoplay policy,
+   * iOS outside a user activation) or while the page is hidden and paused.
+   */
+  get contextRunning(): boolean {
+    return this.ctx !== null && this.ctx.state === 'running';
+  }
+
+  /** There is no usable Web Audio here; every call is a silent no-op. */
+  get isUnavailable(): boolean {
+    return this.unavailable;
+  }
+
+  /**
    * Begin playing (or, if already playing, switch mood and make sure the
    * browser has let the audio through). Safe to call repeatedly.
    */
@@ -201,10 +215,16 @@ export class MusicEngine {
     }
   }
 
-  /** Ask a browser that held the context back (autoplay policy) to let it play. */
+  /**
+   * Ask a browser that held the context back (autoplay policy, WebKit outside
+   * a user activation, an iOS interruption) to let it play. Called on every
+   * start(), so each later gesture gets another try until the state is running.
+   */
   private nudgeContext(): void {
     const ctx = this.ctx;
-    if (ctx && ctx.state === 'suspended' && !this.suspended) this.settle(ctx.resume());
+    if (ctx && ctx.state !== 'running' && ctx.state !== 'closed' && !this.suspended) {
+      this.settle(ctx.resume());
+    }
   }
 
   /** Swallow the rejection of suspend()/resume(): audio is a nicety, never an error. */
