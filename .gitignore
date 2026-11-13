@@ -37,3 +37,6 @@ backend/static/images/gen_*
 !backend/static/images/placeholder_*.svg
 !backend/static/images/scene_*.svg
 .logs/
+
+# ---- Local planning docs (never commit) ----
+docs/
