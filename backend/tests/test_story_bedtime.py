@@ -71,6 +71,43 @@ def test_bedtime_story_has_three_chapters_and_goodnight(client):
     assert len(json.loads(story[2])) == 2  # the refused choice was not recorded
 
 
+def test_offline_bedtime_moods_over_the_stream(client):
+    session = _start(client, bedtime=True)["session_id"]
+    moods = []
+    for number in range(1, 4):
+        if number > 1:
+            assert _choose(client, session).status_code == 200
+        _, meta = _stream(client, session)
+        moods.append(meta["mood"])
+    assert set(moods) <= {"wonder", "calm"}
+    assert moods[-1] == "calm"
+
+
+def test_offline_bedtime_chapters_are_calm_with_no_cliffhangers_at_any_age():
+    from app.services.claude_service import _CLIFFHANGERS, _canned_chapter
+
+    # The literal opening words of each cliffhanger template (before any placeholder).
+    stems = {c.split("{")[0].strip() for c in _CLIFFHANGERS if c.split("{")[0].strip()}
+    for age in (2, 4, 6, 9, 12):
+        moods = []
+        for number in (1, 2, 3):
+            chapter = _canned_chapter(
+                chapter_number=number,
+                character_name="Luna",
+                character_archetype="kind",
+                world="forest",
+                theme="friendship",
+                age=age,
+                last_choice=None,
+                curiosity_answer=None,
+                total_chapters=3,
+                bedtime=True,
+            )
+            moods.append(chapter["mood"])
+            assert not any(stem in chapter["chapter_text"] for stem in stems), (age, number)
+        assert moods == ["wonder", "wonder", "calm"]
+
+
 def test_normal_story_is_final_only_at_eight(client):
     started = _start(client)
     assert started["bedtime"] is False and started["max_chapters"] == 8

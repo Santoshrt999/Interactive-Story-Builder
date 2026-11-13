@@ -394,6 +394,9 @@ def _canned_chapter(
     name = character_name
 
     mood = _MOOD_CYCLE[(chapter_number - 1) % len(_MOOD_CYCLE)]
+    if bedtime:
+        # Bedtime stays soothing: wonder along the way, calm for the goodnight chapter.
+        mood = "calm" if chapter_number >= total_chapters else "wonder"
 
     # Base seed varies per (story identity, chapter) so phrasing differs per
     # chapter and per story, yet is fully reproducible.
@@ -469,7 +472,8 @@ def _canned_chapter(
         ending = _pick(payoffs, base, 8).format(
             name=name, animal=animal_name, lesson=lesson
         )
-    elif cfg["soft"]:
+    elif cfg["soft"] or bedtime:
+        # Bedtime never ends a chapter on a cliffhanger, whatever the age tier.
         ending = _pick_distinct(_SOFT_WONDERS, story_seed, 103, ci).format(
             name=name, animal=animal_name
         )
