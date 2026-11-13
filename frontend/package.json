@@ -9,7 +9,7 @@
     "preview": "vite preview --host --port 5173",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
