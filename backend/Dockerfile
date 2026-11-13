@@ -19,8 +19,9 @@ RUN uv sync --no-dev
 
 EXPOSE 8000
 
+# One worker: parent-lock tokens, cool-down and reset challenges live in process memory.
 CMD ["uv", "run", "gunicorn", "app.main:app", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--workers", "2", \
+     "--workers", "1", \
      "--bind", "0.0.0.0:8000", \
      "--timeout", "120"]
