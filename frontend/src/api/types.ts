@@ -12,6 +12,8 @@ export interface ChildProfile {
   age: number;
   avatar_id: string;
   created_at: string;
+  /** The seeded household profile: editable, never deletable. */
+  is_default: boolean;
 }
 
 export interface CreateProfileBody {
@@ -19,6 +21,13 @@ export interface CreateProfileBody {
   age: number;
   avatar_id: string;
   parent_pin?: string;
+}
+
+/** Partial update (parent token required): omitted fields are left unchanged. */
+export interface UpdateProfileBody {
+  name?: string;
+  age?: number;
+  avatar_id?: string;
 }
 
 /** Full chapter object. `chapter_text` is only present in non-stream returns. */
@@ -32,6 +41,8 @@ export interface Chapter {
   new_vocabulary: string[];
   curiosity_question: string;
   image_url: string;
+  /** True for the last chapter (the goodnight ending in bedtime mode). */
+  is_final: boolean;
 }
 
 /** Chapter meta arrives via SSE WITHOUT chapter_text. */
@@ -43,12 +54,42 @@ export interface StartStoryBody {
   character_archetype: CharacterArchetype;
   world: World;
   theme: Theme;
+  bedtime?: boolean;
 }
 
 export interface StartStoryResponse {
   session_id: string;
   story_id: string;
   title: string;
+  bedtime: boolean;
+  max_chapters: number;
+}
+
+/** The child's most recent unfinished story, offered as "Continue". */
+export interface ActiveStory {
+  story_id: string;
+  title: string;
+  chapter_count: number;
+  max_chapters: number;
+  bedtime: boolean;
+  /** ISO timestamp of the last activity. */
+  updated_at: string;
+}
+
+export interface ResumeResponse {
+  session_id: string;
+  story_id: string;
+  title: string;
+  bedtime: boolean;
+  max_chapters: number;
+  setup: {
+    character_name: string;
+    character_archetype: CharacterArchetype;
+    world: World;
+    theme: Theme;
+  };
+  /** Full chapters, including chapter_text and is_final. */
+  chapters: Chapter[];
 }
 
 export interface ChoiceBody {
@@ -117,6 +158,28 @@ export interface DashboardData {
   themes: DashboardThemes;
   creativity_score: number;
   recent_curiosity_answers: string[];
+}
+
+// Parent lock
+export interface ParentStatus {
+  pin_set: boolean;
+}
+
+export interface UnlockResponse {
+  token: string;
+  expires_at: string;
+}
+
+export interface ResetChallenge {
+  challenge_id: string;
+  question: string;
+}
+
+export interface ResetPinBody {
+  challenge_id: string;
+  /** Numeric answer to the arithmetic question. */
+  answer: number;
+  new_pin: string;
 }
 
 // SSE event payload shapes

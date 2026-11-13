@@ -5,13 +5,20 @@ import asyncio
 import json
 from typing import Any, AsyncIterator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from app.agents.story_agent import stories_for_child, story_agent
+from app.agents.story_agent import (
+    StoryComplete,
+    active_story_for_child,
+    stories_for_child,
+    story_agent,
+    story_last_activity,
+)
 from app.core.logging import get_logger
 from app.models.db import ChildProfile, async_session_maker
 from app.models.schemas import (
+    ActiveStory,
     Certificate,
     ChoiceRequest,
     ChoiceResponse,
@@ -19,12 +26,15 @@ from app.models.schemas import (
     CuriosityAnswerResponse,
     EndRequest,
     EndResponse,
+    ResumeRequest,
+    ResumeResponse,
     StorySummary,
     StoryStartRequest,
     StoryStartResponse,
     VocabularyEntryOut,
 )
 from app.services.claude_service import split_sentences
+from app.services.parent_auth import require_parent
 from app.services.redis_service import redis_service
 
 log = get_logger(__name__)
@@ -49,8 +59,35 @@ async def start_story(payload: StoryStartRequest) -> StoryStartResponse:
         world=payload.world,
         theme=payload.theme,
         age=age,
+        bedtime=payload.bedtime,
     )
     return StoryStartResponse(**result)
+
+
+@router.get("/active/{child_id}", response_model=ActiveStory)
+async def active_story(child_id: str) -> ActiveStory:
+    story = await active_story_for_child(child_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="no unfinished story")
+    return ActiveStory(
+        story_id=story.id,
+        title=story.title,
+        chapter_count=len(story.chapters),
+        max_chapters=story.max_chapters,
+        bedtime=story.bedtime,
+        updated_at=story_last_activity(story).isoformat(),
+    )
+
+
+@router.post("/resume", response_model=ResumeResponse)
+async def resume_story(payload: ResumeRequest) -> ResumeResponse:
+    try:
+        result = await story_agent.resume(payload.story_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="story not found")
+    except StoryComplete:
+        raise HTTPException(status_code=409, detail="story is complete")
+    return ResumeResponse(**result)
 
 
 @router.get("/stream/{session_id}")
@@ -77,12 +114,14 @@ async def stream_story(session_id: str) -> EventSourceResponse:
 @router.post("/choice", response_model=ChoiceResponse)
 async def make_choice(payload: ChoiceRequest) -> ChoiceResponse:
     try:
-        await redis_service.append_choice(payload.session_id, payload.choice)
+        await story_agent.record_choice(payload.session_id, payload.choice)
         chapter = await story_agent.chapter(
             session_id=payload.session_id, last_choice=payload.choice
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="unknown session")
+    except StoryComplete:
+        raise HTTPException(status_code=409, detail="story is complete")
     return ChoiceResponse(
         session_id=payload.session_id, chapter_number=chapter["chapter_number"]
     )
@@ -92,7 +131,7 @@ async def make_choice(payload: ChoiceRequest) -> ChoiceResponse:
 async def curiosity_answer(
     payload: CuriosityAnswerRequest,
 ) -> CuriosityAnswerResponse:
-    await redis_service.append_curiosity_answer(payload.session_id, payload.answer)
+    await story_agent.record_curiosity_answer(payload.session_id, payload.answer)
     return CuriosityAnswerResponse(acknowledged=True)
 
 
@@ -109,7 +148,11 @@ async def end_story(payload: EndRequest) -> EndResponse:
     )
 
 
-@router.get("/history/{child_id}", response_model=list[StorySummary])
+@router.get(
+    "/history/{child_id}",
+    response_model=list[StorySummary],
+    dependencies=[Depends(require_parent)],
+)
 async def story_history(child_id: str) -> list[StorySummary]:
     stories = await stories_for_child(child_id)
     return [

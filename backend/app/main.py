@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logging import configure_logging, get_logger
 from app.models.db import init_db
-from app.routers import dashboard, media, profiles, story
+from app.routers import dashboard, media, parent, profiles, story
 from app.services.redis_service import redis_service
 
 configure_logging()
@@ -52,6 +52,7 @@ app.include_router(profiles.router, prefix="/api")
 app.include_router(story.router, prefix="/api")
 app.include_router(media.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(parent.router, prefix="/api")
 
 
 @app.get("/health")

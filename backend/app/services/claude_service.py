@@ -235,6 +235,15 @@ _CLIMAX_PAYOFFS: list[str] = [
     "The secret was wonderful and true: {lesson}. {name} and {animal} hugged with joy.",
 ]
 
+# Bedtime finale lines: calm, no tension, everyone settles down to sleep.
+# {name}, {animal}, {lesson}
+_GOODNIGHT_PAYOFFS: list[str] = [
+    "Softly, {name} and {animal} remembered {lesson}. Then they yawned, snuggled close, and drifted off to sleep. Goodnight, {name}.",
+    "The stars blinked slowly, and {name} and {animal} whispered goodnight to the whole quiet world. Warm and cozy, they fell fast asleep.",
+    "{name} had learned {lesson}, and that made the heart feel calm and full. With {animal} close beside, {name} closed both eyes and went to sleep.",
+    "Everything was still and peaceful. {name} gave {animal} one last sleepy hug, whispered goodnight, and fell asleep remembering {lesson}.",
+]
+
 # Choice sets — pools per arc stage. Each entry is a list of 3 choices.
 # {animal}, {place}, {vocab}
 _CHOICE_SETS_EARLY: list[list[str]] = [
@@ -371,6 +380,8 @@ def _canned_chapter(
     age: int,
     last_choice: str | None,
     curiosity_answer: str | None,
+    total_chapters: int = 8,
+    bedtime: bool = False,
 ) -> dict[str, Any]:
     """Produce a deterministic, varied, arc-based chapter dict for offline mode."""
     flavor = _WORLD_FLAVOR.get(world, _WORLD_FLAVOR["forest"])
@@ -383,6 +394,9 @@ def _canned_chapter(
     name = character_name
 
     mood = _MOOD_CYCLE[(chapter_number - 1) % len(_MOOD_CYCLE)]
+    if bedtime:
+        # Bedtime stays soothing: wonder along the way, calm for the goodnight chapter.
+        mood = "calm" if chapter_number >= total_chapters else "wonder"
 
     # Base seed varies per (story identity, chapter) so phrasing differs per
     # chapter and per story, yet is fully reproducible.
@@ -398,9 +412,12 @@ def _canned_chapter(
     vocab_word, vocab_def = vocab_pool[(chapter_number - 1) % len(vocab_pool)]
 
     # --- Arc stage ---------------------------------------------------------
+    # A full-length story keeps chapters 6-8 as its climax; a shorter one
+    # (e.g. bedtime) compresses to arrival -> rising -> a single final climax.
+    climax_start = 6 if total_chapters >= 8 else total_chapters
     if chapter_number == 1:
         stage = "arrival"
-    elif chapter_number >= 6:
+    elif chapter_number >= climax_start:
         stage = "climax"
     else:
         stage = "rising"
@@ -411,9 +428,9 @@ def _canned_chapter(
             archetype=character_archetype, name=name, place=flavor["place"]
         )
     elif stage == "climax":
-        # ch6 -> index 0, ch7 -> index 1 within the climax pool.
+        # First climax chapter -> index 0, the next -> index 1, and so on.
         opening = _pick_distinct(
-            _CLIMAX_OPENINGS, story_seed, 101, chapter_number - 6
+            _CLIMAX_OPENINGS, story_seed, 101, chapter_number - climax_start
         ).format(name=name, place=flavor["place"])
     else:
         # Distinct per rising chapter (chapters 2..5).
@@ -451,10 +468,12 @@ def _canned_chapter(
 
     # --- Ending (cliffhanger / soft wonder / climax payoff) ----------------
     if stage == "climax":
-        ending = _pick(_CLIMAX_PAYOFFS, base, 8).format(
+        payoffs = _GOODNIGHT_PAYOFFS if bedtime else _CLIMAX_PAYOFFS
+        ending = _pick(payoffs, base, 8).format(
             name=name, animal=animal_name, lesson=lesson
         )
-    elif cfg["soft"]:
+    elif cfg["soft"] or bedtime:
+        # Bedtime never ends a chapter on a cliffhanger, whatever the age tier.
         ending = _pick_distinct(_SOFT_WONDERS, story_seed, 103, ci).format(
             name=name, animal=animal_name
         )
@@ -585,6 +604,8 @@ class ClaudeService:
         age: int,
         last_choice: str | None = None,
         curiosity_answer: str | None = None,
+        total_chapters: int = 8,
+        bedtime: bool = False,
     ) -> dict[str, Any]:
         """Return a parsed chapter dict (text, title, choices, etc.)."""
         if self._client is None:
@@ -597,14 +618,21 @@ class ClaudeService:
                 age=age,
                 last_choice=last_choice,
                 curiosity_answer=curiosity_answer,
+                total_chapters=total_chapters,
+                bedtime=bedtime,
             )
 
         user_lines = [
             f"Child age: {age} (content tier {age_tier(age)}).",
             f"Hero: {character_name}, who is {character_archetype}.",
             f"World: {world}. Theme: {theme}.",
-            f"This is chapter {chapter_number} (max 8 chapters).",
+            f"This is chapter {chapter_number} of {total_chapters}.",
         ]
+        if bedtime:
+            user_lines.append(
+                "Bedtime story: keep it calm and soothing; the final chapter must "
+                "end with the characters peacefully falling asleep."
+            )
         if last_choice:
             user_lines.append(f'The child just chose / said: "{last_choice}".')
         if curiosity_answer:
@@ -645,6 +673,8 @@ class ClaudeService:
                 age=age,
                 last_choice=last_choice,
                 curiosity_answer=curiosity_answer,
+                total_chapters=total_chapters,
+                bedtime=bedtime,
             )
 
     async def stream_text(

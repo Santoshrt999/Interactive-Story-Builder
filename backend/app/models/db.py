@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.ext.asyncio import (
     AsyncAttrs,
     AsyncSession,
@@ -16,6 +16,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import JSON
 
 from app.core.config import settings
+from app.models.migrate import migrate
 
 
 def _uuid() -> str:
@@ -39,6 +40,18 @@ class ChildProfile(Base):
     avatar_id: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     parent_pin_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("0"), nullable=False
+    )
+
+
+class HouseholdSettings(Base):
+    """Single-row (id=1) household-wide settings, e.g. the one parent PIN."""
+
+    __tablename__ = "household_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    parent_pin_hash: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Story(Base):
@@ -61,6 +74,15 @@ class Story(Base):
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     duration_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    bedtime: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("0"), nullable=False
+    )
+    max_chapters: Mapped[int] = mapped_column(
+        Integer, default=8, server_default=text("8"), nullable=False
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class VocabularyEntry(Base):
@@ -90,9 +112,10 @@ async_session_maker = async_sessionmaker(
 
 
 async def init_db() -> None:
-    """Create all tables if they do not yet exist."""
+    """Create missing tables, then bring existing ones up to the current schema."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await migrate(conn)
 
 
 async def get_session() -> Any:

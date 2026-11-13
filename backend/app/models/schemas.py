@@ -1,9 +1,9 @@
 """Pydantic v2 request/response schemas matching the API contract exactly."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 Archetype = Literal["brave", "curious", "funny", "kind"]
 World = Literal["forest", "ocean", "space", "city"]
@@ -13,11 +13,37 @@ Mood = Literal["wonder", "excitement", "mystery", "joy", "calm"]
 
 # --- Profiles ---------------------------------------------------------------
 
+PROFILE_NAME_MAX = 30
+
+
+def _clean_profile_name(value: str) -> str:
+    """Trim, then require 1-30 characters (shared by create and update)."""
+    value = value.strip()
+    if not 1 <= len(value) <= PROFILE_NAME_MAX:
+        raise ValueError(f"name must be 1-{PROFILE_NAME_MAX} characters")
+    return value
+
+
+# Defined once so create and update can never disagree on what is valid.
+ProfileName = Annotated[str, AfterValidator(_clean_profile_name)]
+ProfileAge = Annotated[int, Field(ge=0, le=12)]
+
+
 class ChildProfileCreate(BaseModel):
-    name: str
-    age: int = Field(ge=4, le=12)
+    name: ProfileName
+    age: ProfileAge
     avatar_id: str
+    # Legacy per-profile PIN: accepted and stored but unused (the household PIN
+    # in `household_settings` replaced it).
     parent_pin: str | None = None
+
+
+class ChildProfileUpdate(BaseModel):
+    """Partial update: omitted (or null) fields are left unchanged."""
+
+    name: ProfileName | None = None
+    age: ProfileAge | None = None
+    avatar_id: str | None = None
 
 
 class ChildProfileOut(BaseModel):
@@ -28,6 +54,7 @@ class ChildProfileOut(BaseModel):
     age: int
     avatar_id: str
     created_at: str
+    is_default: bool
 
 
 # --- Chapter ----------------------------------------------------------------
@@ -42,6 +69,8 @@ class Chapter(BaseModel):
     new_vocabulary: list[str]
     curiosity_question: str
     image_url: str
+    # Chapters stored before bedtime mode have no is_final; resume fills it in.
+    is_final: bool = False
 
 
 class ChapterMeta(BaseModel):
@@ -55,6 +84,8 @@ class ChapterMeta(BaseModel):
     new_vocabulary: list[str]
     curiosity_question: str
     image_url: str
+    # Chapters stored before bedtime mode have no is_final; resume fills it in.
+    is_final: bool = False
 
 
 # --- Story ------------------------------------------------------------------
@@ -65,12 +96,47 @@ class StoryStartRequest(BaseModel):
     character_archetype: Archetype
     world: World
     theme: Theme
+    bedtime: bool = False
 
 
 class StoryStartResponse(BaseModel):
     session_id: str
     story_id: str
     title: str
+    bedtime: bool
+    max_chapters: int
+
+
+class ActiveStory(BaseModel):
+    """The child's most recent unfinished story, offered as "Continue"."""
+
+    story_id: str
+    title: str
+    chapter_count: int
+    max_chapters: int
+    bedtime: bool
+    updated_at: str
+
+
+class ResumeRequest(BaseModel):
+    story_id: str
+
+
+class ResumeSetup(BaseModel):
+    character_name: str
+    character_archetype: str
+    world: str
+    theme: str
+
+
+class ResumeResponse(BaseModel):
+    session_id: str
+    story_id: str
+    title: str
+    bedtime: bool
+    max_chapters: int
+    setup: ResumeSetup
+    chapters: list[Chapter]
 
 
 class ChoiceRequest(BaseModel):
@@ -169,3 +235,37 @@ class DashboardResponse(BaseModel):
     themes: DashboardThemes
     creativity_score: float
     recent_curiosity_answers: list[str]
+
+
+# --- Parent lock ------------------------------------------------------------
+
+# ASCII digits only: `\d` would also accept e.g. Arabic-Indic digits.
+_PIN_PATTERN = r"^[0-9]{4}$"
+
+
+class PinIn(BaseModel):
+    pin: str = Field(pattern=_PIN_PATTERN)
+
+
+class ChangePinIn(BaseModel):
+    new_pin: str = Field(pattern=_PIN_PATTERN)
+
+
+class ParentStatus(BaseModel):
+    pin_set: bool
+
+
+class UnlockOut(BaseModel):
+    token: str
+    expires_at: str
+
+
+class ResetChallengeOut(BaseModel):
+    challenge_id: str
+    question: str
+
+
+class ResetIn(BaseModel):
+    challenge_id: str
+    answer: int
+    new_pin: str = Field(pattern=_PIN_PATTERN)

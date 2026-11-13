@@ -52,12 +52,39 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote get-url ori
 fi
 
 # ---------------------------------------------------------------- free ports
+# Old runs can be left behind — even *frozen* (Ctrl+Z), which still holds the
+# ports but never answers. Frozen processes ignore a normal stop, so wake them
+# first (CONT), ask nicely (TERM), then force (KILL) if they're still there.
+stop_pids() {
+  [ -z "$1" ] && return
+  kill -CONT $1 2>/dev/null || true
+  kill -TERM $1 2>/dev/null || true
+  for _ in 1 2 3 4 5 6; do
+    sleep 0.5
+    alive=""
+    for p in $1; do kill -0 "$p" 2>/dev/null && alive="$alive $p"; done
+    [ -z "$alive" ] && return
+  done
+  kill -KILL $alive 2>/dev/null || true
+  sleep 0.5
+}
+
+# Earlier copies of this launcher (frozen or orphaned) — stop them and their children.
+old_launchers="$(pgrep -f "$ROOT/start.sh" 2>/dev/null | grep -vx "$$" || true)"
+if [ -n "$old_launchers" ]; then
+  warn "Stopping an earlier StoryWeaver run…"
+  for p in $old_launchers; do stop_pids "$(pgrep -P "$p" 2>/dev/null || true)"; done
+  stop_pids "$old_launchers"
+fi
+
 for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
   pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
   if [ -n "$pids" ]; then
-    warn "Port $port in use — stopping old process(es): $pids"
-    kill $pids 2>/dev/null || true
-    sleep 1
+    warn "Port $port in use — stopping old process(es): $(echo $pids)"
+    stop_pids "$pids"
+  fi
+  if lsof -ti tcp:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    die "Port $port is still busy (another app?). Close it, then run start.sh again."
   fi
 done
 
@@ -96,6 +123,9 @@ cleanup() {
   exit 0
 }
 trap cleanup INT TERM EXIT
+# Ignore Ctrl+Z: suspending would freeze the servers while they still hold
+# their ports. The ignore is inherited by the servers started below.
+trap '' TSTP
 
 say "Starting backend  → http://localhost:$BACKEND_PORT  (log: .logs/backend.log)"
 (cd "$BACKEND" && exec uv run uvicorn app.main:app --reload --port "$BACKEND_PORT") \
@@ -117,10 +147,18 @@ wait_for() { # url name logfile
 wait_for "http://localhost:$BACKEND_PORT/health" "Backend"  "$LOG_DIR/backend.log"
 wait_for "http://localhost:$FRONTEND_PORT/"      "Frontend" "$LOG_DIR/frontend.log"
 
-printf '\n\033[1;32m✔ StoryWeaver is running → http://localhost:%s\033[0m\n' "$FRONTEND_PORT"
-echo "  Code changes reload automatically. Press Ctrl+C to stop."
+APP_URL="http://localhost:$FRONTEND_PORT"
+printf '\n\033[1;32m✔ StoryWeaver is running → %s\033[0m\n' "$APP_URL"
+echo "  Code changes reload automatically. Press Ctrl+C to stop (not Ctrl+Z)."
 echo
-command -v open >/dev/null && open "http://localhost:$FRONTEND_PORT"
+# Open the app in the default browser (macOS `open`, Linux `xdg-open`).
+if command -v open >/dev/null; then
+  open "$APP_URL" || warn "Couldn't open the browser — visit $APP_URL"
+elif command -v xdg-open >/dev/null; then
+  xdg-open "$APP_URL" >/dev/null 2>&1 || warn "Couldn't open the browser — visit $APP_URL"
+else
+  warn "Open $APP_URL in your browser."
+fi
 
 # Stream both logs; exit if either server dies.
 tail -n 0 -f "$LOG_DIR/backend.log" "$LOG_DIR/frontend.log" &

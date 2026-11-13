@@ -13,21 +13,63 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, get_args
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.agents.curiosity_agent import curiosity_agent
 from app.agents.image_agent import image_agent
 from app.agents.vocab_agent import vocab_agent
 from app.core.logging import get_logger
-from app.models.db import Story, VocabularyEntry, async_session_maker
+from app.models.db import ChildProfile, Story, VocabularyEntry, async_session_maker
+from app.models.schemas import Mood
 from app.services.claude_service import claude_service
 from app.services.redis_service import redis_service
 
 log = get_logger(__name__)
 
 MAX_CHAPTERS = 8
+BEDTIME_CHAPTERS = 3
+
+
+_MOODS = frozenset(get_args(Mood))
+_DEFAULT_MOOD = "wonder"
+
+
+def _text(value: Any, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
+
+def _text_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item is not None]
+
+
+def normalize_chapter_fields(chapter: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    """Coerce a chapter's content fields into what the `Chapter` schema accepts.
+
+    The model's JSON is stored as-is, so a field can be off-enum (`mood`), null
+    or the wrong type. Applied both when a chapter is built and when a stored one
+    is resumed (rows written earlier may already be bad), so one malformed chapter
+    can never make a story unresumable.
+    """
+    mood = chapter.get("mood")
+    return {
+        "chapter_title": _text(chapter.get("chapter_title"), f"Chapter {chapter_number}"),
+        "chapter_text": _text(chapter.get("chapter_text")),
+        "choices": _text_list(chapter.get("choices")),
+        "scene_description": _text(chapter.get("scene_description")),
+        "mood": mood if isinstance(mood, str) and mood in _MOODS else _DEFAULT_MOOD,
+        "new_vocabulary": _text_list(chapter.get("new_vocabulary")),
+        "curiosity_question": _text(chapter.get("curiosity_question")),
+        "image_url": _text(chapter.get("image_url")),
+    }
+
+
+class StoryComplete(ValueError):
+    """Raised when a chapter or choice is requested past the story's last chapter."""
+
 
 # Words like these in a transcript mean "this is a reflection", not a choice.
 _REFLECTION_HINTS = (
@@ -59,9 +101,11 @@ class StoryAgent:
         world: str,
         theme: str,
         age: int,
+        bedtime: bool = False,
     ) -> dict[str, Any]:
         """Create the story + session, generate chapter 1 (stored pending)."""
         session_id = str(uuid.uuid4())
+        max_chapters = BEDTIME_CHAPTERS if bedtime else MAX_CHAPTERS
         story_id = str(uuid.uuid4())
         title = self._make_title(character_name, world, theme)
 
@@ -81,6 +125,8 @@ class StoryAgent:
                 vocabulary_log=[],
                 completed=False,
                 duration_seconds=0,
+                bedtime=bedtime,
+                max_chapters=max_chapters,
             )
             db.add(story)
             await db.commit()
@@ -96,6 +142,8 @@ class StoryAgent:
             "theme": theme,
             "age": age,
             "title": title,
+            "bedtime": bedtime,
+            "max_chapters": max_chapters,
             "chapters": [],
             "choices": [],
             "curiosity_answers": [],
@@ -108,7 +156,90 @@ class StoryAgent:
         )
         await self._store_chapter(context, chapter)
 
-        return {"session_id": session_id, "story_id": story_id, "title": title}
+        return {
+            "session_id": session_id,
+            "story_id": story_id,
+            "title": title,
+            "bedtime": bedtime,
+            "max_chapters": max_chapters,
+        }
+
+    async def resume(self, story_id: str) -> dict[str, Any]:
+        """Rebuild a session for an unfinished story, e.g. after a server restart.
+
+        The new session has no `pending_chapter`: every chapter already stored is
+        handed back in the return value, so none is streamed a second time.
+
+        Raises KeyError if the story is unknown or has no chapters yet (nothing
+        to resume), and StoryComplete if it was already finished.
+        """
+        async with async_session_maker() as db:
+            story = await db.get(Story, story_id)
+            profile = await db.get(ChildProfile, story.child_id) if story else None
+        if story is None or not story.chapters:
+            raise KeyError(f"no resumable story {story_id}")
+        if story.completed:
+            raise StoryComplete("story is complete")
+
+        max_chapters = int(story.max_chapters)
+        chapters: list[dict[str, Any]] = []
+        for index, stored in enumerate(story.chapters, start=1):
+            number = stored.get("chapter_number")
+            if not isinstance(number, int) or isinstance(number, bool):
+                number = index
+            # Chapters stored before bedtime mode lack is_final.
+            is_final = stored.get("is_final")
+            if not isinstance(is_final, bool):
+                is_final = number >= max_chapters
+            chapters.append(
+                {
+                    "chapter_number": number,
+                    "is_final": is_final,
+                    **normalize_chapter_fields(stored, number),
+                }
+            )
+
+        # Time spent so far: first chapter to last activity. The hours or days the
+        # story sat unfinished do not count; the clock restarts now.
+        active = story_last_activity(story) - as_utc(story.created_at)
+        prior_active_seconds = max(0, int(active.total_seconds()))
+
+        session_id = str(uuid.uuid4())
+        context: dict[str, Any] = {
+            "session_id": session_id,
+            "story_id": story.id,
+            "child_id": story.child_id,
+            "child_name": profile.name if profile else "Explorer",
+            "character_name": story.character_name,
+            "character_archetype": story.character_archetype,
+            "world": story.world,
+            "theme": story.theme,
+            "age": profile.age if profile else 7,
+            "title": story.title,
+            "bedtime": bool(story.bedtime),
+            "max_chapters": max_chapters,
+            "chapters": chapters,
+            "choices": list(story.choices_made or []),
+            "curiosity_answers": list(story.curiosity_answers or []),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "prior_active_seconds": prior_active_seconds,
+        }
+        await redis_service.set(session_id, context)
+
+        return {
+            "session_id": session_id,
+            "story_id": story.id,
+            "title": story.title,
+            "bedtime": context["bedtime"],
+            "max_chapters": max_chapters,
+            "setup": {
+                "character_name": story.character_name,
+                "character_archetype": story.character_archetype,
+                "world": story.world,
+                "theme": story.theme,
+            },
+            "chapters": list(chapters),
+        }
 
     async def chapter(
         self,
@@ -123,8 +254,8 @@ class StoryAgent:
             raise KeyError(f"unknown session {session_id}")
 
         next_number = len(context.get("chapters", [])) + 1
-        if next_number > MAX_CHAPTERS:
-            next_number = MAX_CHAPTERS
+        if next_number > self._max_chapters(context):
+            raise StoryComplete("story is complete")
 
         chapter = await self._build_chapter(
             context,
@@ -134,6 +265,34 @@ class StoryAgent:
         )
         await self._store_chapter(context, chapter)
         return chapter
+
+    async def record_choice(self, session_id: str, choice: str) -> None:
+        """Append a choice to the session and to `Story.choices_made`.
+
+        Raises KeyError for an unknown session and StoryComplete once the final
+        chapter exists (there is nothing left to choose for).
+        """
+        context = await redis_service.get(session_id)
+        if context is None:
+            raise KeyError(f"unknown session {session_id}")
+        if len(context.get("chapters", [])) >= self._max_chapters(context):
+            raise StoryComplete("story is complete")
+
+        await redis_service.append_choice(session_id, choice)
+        await self._mirror_to_story(session_id, column="choices_made", key="choices")
+
+    async def record_curiosity_answer(self, session_id: str, answer: str) -> None:
+        """Append a reflection to the session and to `Story.curiosity_answers`.
+
+        An unknown session is ignored (the endpoint acknowledges it regardless).
+        """
+        context = await redis_service.get(session_id)
+        if context is None:
+            return
+        await redis_service.append_curiosity_answer(session_id, answer)
+        await self._mirror_to_story(
+            session_id, column="curiosity_answers", key="curiosity_answers"
+        )
 
     async def process_input(self, *, session_id: str, transcript: str) -> dict[str, Any]:
         """Interpret a child's transcript and advance the story accordingly.
@@ -147,11 +306,11 @@ class StoryAgent:
 
         kind = self._classify(transcript)
         if kind == "reflection":
-            await redis_service.append_curiosity_answer(session_id, transcript)
+            await self.record_curiosity_answer(session_id, transcript)
             return {"kind": "reflection", "chapter": None}
 
         # choice or new idea -> weave into the next chapter
-        await redis_service.append_choice(session_id, transcript)
+        await self.record_choice(session_id, transcript)
         chapter = await self.chapter(session_id=session_id, last_choice=transcript)
         return {"kind": "choice", "chapter": chapter}
 
@@ -171,7 +330,10 @@ class StoryAgent:
             all_words.extend(ch.get("new_vocabulary", []))
         vocab = await vocab_agent.define(all_words, age=context.get("age", 7))
 
-        duration = self._elapsed_seconds(context.get("started_at"))
+        # A resumed session carries the active time from before the restart.
+        duration = int(context.get("prior_active_seconds") or 0) + self._elapsed_seconds(
+            context.get("started_at")
+        )
         achievement = self._achievement(context["theme"], len(chapters))
         certificate = {
             "child_name": context.get("child_name", "Explorer"),
@@ -230,41 +392,36 @@ class StoryAgent:
             age=context.get("age", 7),
             last_choice=last_choice,
             curiosity_answer=curiosity_answer,
+            total_chapters=self._max_chapters(context),
+            bedtime=bool(context.get("bedtime", False)),
         )
+        fields = normalize_chapter_fields(raw, chapter_number)
 
-        choices = list(raw.get("choices") or [])
+        choices = fields["choices"]
         while len(choices) < 3:
             choices.append("Keep exploring")
         choices = choices[:3]
 
-        scene = raw.get("scene_description", "")
-        mood = raw.get("mood", "wonder")
-
         image_url = await image_agent.illustrate(
-            scene_description=scene,
+            scene_description=fields["scene_description"],
             character_name=context["character_name"],
             character_archetype=context["character_archetype"],
             world=context["world"],
-            mood=mood,
+            mood=fields["mood"],
         )
 
         question = await curiosity_agent.ask(
-            chapter_text=raw.get("chapter_text", ""),
+            chapter_text=fields["chapter_text"],
             theme=context["theme"],
             chapter_number=chapter_number,
             age=context.get("age", 7),
         )
 
         return {
+            **fields,
             "chapter_number": chapter_number,
-            "chapter_title": raw.get(
-                "chapter_title", f"Chapter {chapter_number}"
-            ),
-            "chapter_text": raw.get("chapter_text", ""),
+            "is_final": chapter_number >= self._max_chapters(context),
             "choices": choices,
-            "scene_description": scene,
-            "mood": mood,
-            "new_vocabulary": list(raw.get("new_vocabulary") or []),
             "curiosity_question": question,
             "image_url": image_url,
         }
@@ -280,7 +437,24 @@ class StoryAgent:
             if story is not None:
                 updated = await redis_service.get(session_id)
                 story.chapters = (updated or {}).get("chapters", [])
+                story.updated_at = datetime.now(timezone.utc)
                 await db.commit()
+
+    async def _mirror_to_story(self, session_id: str, *, column: str, key: str) -> None:
+        """Copy the session's `key` list into the Story `column`."""
+        context = await redis_service.get(session_id)
+        if context is None:
+            return
+        async with async_session_maker() as db:
+            story = await db.get(Story, context["story_id"])
+            if story is not None:
+                setattr(story, column, list(context.get(key, [])))
+                await db.commit()
+
+    @staticmethod
+    def _max_chapters(context: dict[str, Any]) -> int:
+        # Sessions created before bedtime mode have no max_chapters key.
+        return int(context.get("max_chapters", MAX_CHAPTERS))
 
     def _classify(self, transcript: str) -> str:
         text = transcript.lower().strip()
@@ -336,6 +510,31 @@ class StoryAgent:
             f"{certificate['child_name']}.</footer>"
         )
         return "\n".join(parts)
+
+
+def as_utc(value: datetime) -> datetime:
+    """SQLite hands back naive datetimes even for timezone-aware columns; they are UTC."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def story_last_activity(story: Story) -> datetime:
+    """`updated_at`, or `created_at` for rows written before `updated_at` existed."""
+    return as_utc(story.updated_at or story.created_at)
+
+
+async def active_story_for_child(child_id: str) -> Story | None:
+    """The child's most recently active unfinished story that has a chapter."""
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(Story)
+            .where(Story.child_id == child_id, Story.completed.is_(False))
+            .order_by(
+                func.coalesce(Story.updated_at, Story.created_at).desc(),
+                Story.created_at.desc(),
+            )
+        )
+        # A story whose first chapter never got stored has nothing to resume.
+        return next((s for s in result.scalars() if s.chapters), None)
 
 
 async def stories_for_child(child_id: str) -> list[Story]:

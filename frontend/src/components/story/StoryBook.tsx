@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { Mood } from '@/api/types';
 import type { CompletedChapter } from '@/store/storyStore';
@@ -22,6 +22,19 @@ interface StoryBookProps {
   streaming: boolean;
   /** Notifies the parent which page index is being viewed (live = last). */
   onViewingChange?: (viewingLatest: boolean) => void;
+  /**
+   * Fired when the visible page changes (flip, dot tap, or a new page
+   * arriving). `text` is the page's full text.
+   */
+  onPageChange?: (p: { index: number; isLatest: boolean; text: string }) => void;
+  /**
+   * Read-aloud button. `onToggle` gets the visible page's current text so an
+   * idle narrator can start reading it. Omit to hide the button.
+   */
+  narration?: {
+    state: 'playing' | 'paused' | 'idle';
+    onToggle: (pageText: string) => void;
+  };
 }
 
 interface PageData {
@@ -35,6 +48,17 @@ interface PageData {
   text?: string;
   isLive: boolean;
 }
+
+/** The full text of a page, as the narrator should read it. */
+function pageText(page: PageData): string {
+  return page.isLive ? (page.sentences ?? []).join(' ').trim() : (page.text ?? '');
+}
+
+const NARRATION_BUTTON = {
+  playing: { icon: '⏸', label: 'Pause', aria: 'Pause the narrator' },
+  paused: { icon: '▶︎', label: 'Keep reading', aria: 'Resume the narrator' },
+  idle: { icon: '▶︎', label: 'Read to me', aria: 'Read this page aloud' },
+} as const;
 
 /** The illustrated left page (or top, on mobile). */
 function IllustrationPage({
@@ -122,7 +146,15 @@ function TextPage({ page, streaming }: { page: PageData; streaming: boolean }) {
  * text) on wide screens, collapsing to a single page on mobile. The latest
  * chapter streams in live; finished chapters can be flipped back through.
  */
-export function StoryBook({ title, completed, live, streaming, onViewingChange }: StoryBookProps) {
+export function StoryBook({
+  title,
+  completed,
+  live,
+  streaming,
+  onViewingChange,
+  onPageChange,
+  narration,
+}: StoryBookProps) {
   const reduceMotion = useReducedMotion();
 
   const pages: PageData[] = useMemo(() => {
@@ -156,14 +188,20 @@ export function StoryBook({ title, completed, live, streaming, onViewingChange }
   }, [completed, live]);
 
   const lastIndex = Math.max(0, pages.length - 1);
-  const [index, setIndex] = useState(lastIndex);
+  // The page the child flipped to; null means "follow the latest page".
+  const [selected, setSelected] = useState<number | null>(null);
   const [direction, setDirection] = useState(0);
+  const [seenLastIndex, setSeenLastIndex] = useState(lastIndex);
 
   // Whenever a new page appears, jump to the latest so the child keeps reading.
-  useEffect(() => {
-    setIndex(lastIndex);
+  // Done while rendering (not in an effect) so `index` is never briefly stale,
+  // which would look like the child had flipped back.
+  if (seenLastIndex !== lastIndex) {
+    setSeenLastIndex(lastIndex);
+    setSelected(null);
     setDirection(1);
-  }, [lastIndex]);
+  }
+  const index = selected === null ? lastIndex : Math.min(selected, lastIndex);
 
   const viewingLatest = index >= lastIndex;
   useEffect(() => {
@@ -172,13 +210,21 @@ export function StoryBook({ title, completed, live, streaming, onViewingChange }
 
   const page = pages[index];
 
-  const go = (delta: number) => {
-    setIndex((i) => {
-      const next = Math.min(lastIndex, Math.max(0, i + delta));
-      setDirection(next > i ? 1 : -1);
-      return next;
-    });
+  // Fire on page changes only, not on every streamed sentence of the live page.
+  const pageTextRef = useRef('');
+  pageTextRef.current = page ? pageText(page) : '';
+  const onPageChangeRef = useRef(onPageChange);
+  onPageChangeRef.current = onPageChange;
+  useEffect(() => {
+    onPageChangeRef.current?.({ index, isLatest: viewingLatest, text: pageTextRef.current });
+  }, [index, viewingLatest]);
+
+  const goTo = (target: number) => {
+    const next = Math.min(lastIndex, Math.max(0, target));
+    setDirection(next > index ? 1 : -1);
+    setSelected(next >= lastIndex ? null : next);
   };
+  const go = (delta: number) => goTo(index + delta);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -188,7 +234,7 @@ export function StoryBook({ title, completed, live, streaming, onViewingChange }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastIndex]);
+  }, [index, lastIndex]);
 
   if (!page) {
     return (
@@ -295,26 +341,38 @@ export function StoryBook({ title, completed, live, streaming, onViewingChange }
         </button>
       </div>
 
-      {/* Page dots */}
-      {pages.length > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-1">
-          {pages.map((p, i) => (
+      {/* Read-aloud button + page dots */}
+      {(narration || pages.length > 1) && (
+        <div className="flex items-center justify-center gap-4 pt-1">
+          {narration && (
             <button
-              key={p.chapterNumber ?? i}
               type="button"
-              onClick={() => {
-                setDirection(i > index ? 1 : -1);
-                setIndex(i);
-              }}
-              aria-label={`Go to page ${i + 1}`}
-              aria-current={i === index}
-              className={
-                i === index
-                  ? 'h-2.5 w-6 rounded-full bg-firefly transition-all'
-                  : 'h-2.5 w-2.5 rounded-full bg-white/25 transition-all hover:bg-white/40'
-              }
-            />
-          ))}
+              onClick={() => narration.onToggle(pageText(page))}
+              aria-label={NARRATION_BUTTON[narration.state].aria}
+              className="flex min-h-12 min-w-12 items-center justify-center gap-2 rounded-full glass px-5 font-display text-lg text-parchment shadow-[var(--shadow-soft)] transition hover:bg-white/15"
+            >
+              <span aria-hidden="true">{NARRATION_BUTTON[narration.state].icon}</span>
+              <span>{NARRATION_BUTTON[narration.state].label}</span>
+            </button>
+          )}
+          {pages.length > 1 && (
+            <div className="flex items-center gap-2">
+              {pages.map((p, i) => (
+                <button
+                  key={p.chapterNumber ?? i}
+                  type="button"
+                  onClick={() => goTo(i)}
+                  aria-label={`Go to page ${i + 1}`}
+                  aria-current={i === index}
+                  className={
+                    i === index
+                      ? 'h-2.5 w-6 rounded-full bg-firefly transition-all'
+                      : 'h-2.5 w-2.5 rounded-full bg-white/25 transition-all hover:bg-white/40'
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

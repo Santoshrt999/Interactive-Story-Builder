@@ -1,103 +1,122 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Howl } from 'howler';
+import { SpeechQueue, narratorVoice } from '@/lib/speechQueue';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useVoices } from '@/hooks/useVoices';
+import { pickVoice } from '@/lib/voices';
 
 export interface UseAudio {
+  /** Narration is audibly playing (not paused, not idle). */
   isPlaying: boolean;
-  speak: (text: string) => void;
-  playUrl: (url: string) => void;
+  /** The child paused the narrator mid-sentence. */
+  isPaused: boolean;
+  /** Queue a sentence after whatever is already being read. */
+  enqueue: (text: string) => void;
+  /** Drop the queue and read this text (a page, sentence by sentence) right away. */
+  speakNow: (text: string) => void;
+  pause: () => void;
+  resume: () => void;
   stop: () => void;
+  playUrl: (url: string) => void;
   toggleMuted: () => void;
   muted: boolean;
 }
 
+
 /**
  * Audio playback hook.
- * Phase 1: narration uses the browser's speechSynthesis (no audio URLs yet).
+ * Narration uses the browser's speechSynthesis through a SpeechQueue, so every
+ * sentence is read in order instead of the latest one cutting off the rest.
  * `playUrl` is wired through Howler.js for when narration audio arrives later.
  */
-/** Names of warm, child-friendly female voices, in order of preference. */
-const PREFERRED_VOICE_NAMES = [
-  'Samantha',
-  'Karen',
-  'Tessa',
-  'Moira',
-  'Google UK English Female',
-  'Microsoft Zira',
-];
-
-/** Heuristic hints that a voice is likely a female English voice. */
-const FEMALE_HINTS = ['female', 'woman', 'girl', 'zira', 'samantha', 'victoria', 'serena', 'fiona'];
-
-/** Pick the softest, friendliest female English voice available. */
-function pickFriendlyVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
-  if (voices.length === 0) return null;
-
-  for (const name of PREFERRED_VOICE_NAMES) {
-    const match = voices.find((v) => v.name.toLowerCase() === name.toLowerCase());
-    if (match) return match;
-  }
-
-  const english = voices.filter((v) => v.lang.toLowerCase().startsWith('en'));
-  const femaleEnglish = english.find((v) =>
-    FEMALE_HINTS.some((hint) => v.name.toLowerCase().includes(hint))
-  );
-  if (femaleEnglish) return femaleEnglish;
-
-  return english[0] ?? voices[0];
-}
-
 export function useAudio(): UseAudio {
   const howlRef = useRef<Howl | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [urlPlaying, setUrlPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   mutedRef.current = muted;
 
+  // Read at utterance-creation time so a bedtime switch applies to the next sentence.
+  const bedtime = useSettingsStore((s) => s.bedtime);
+  const bedtimeRef = useRef(bedtime);
+  bedtimeRef.current = bedtime;
+
   const synthSupported =
     typeof window !== 'undefined' && 'speechSynthesis' in window;
 
-  // Voices load asynchronously; choose one once they're available.
+  // Voices load asynchronously; use the parent's chosen voice, else the most
+  // natural child-friendly one installed (Premium/Enhanced first).
+  const voices = useVoices();
+  const voiceName = useSettingsStore((s) => s.voiceName);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  voiceRef.current = pickVoice(voices, voiceName);
 
-  useEffect(() => {
-    if (!synthSupported) return;
-    const loadVoices = () => {
-      const voice = pickFriendlyVoice(window.speechSynthesis.getVoices());
-      if (voice) voiceRef.current = voice;
-    };
-    loadVoices();
-    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
-    return () => {
-      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
-    };
+  const queueRef = useRef<SpeechQueue | null>(null);
+  const getQueue = useCallback((): SpeechQueue | null => {
+    if (!synthSupported) return null;
+    if (!queueRef.current) {
+      const queue = new SpeechQueue(window.speechSynthesis, (text) => {
+        const utter = new SpeechSynthesisUtterance(text);
+        const voice = voiceRef.current;
+        if (voice) {
+          utter.voice = voice;
+          utter.lang = voice.lang;
+        }
+        const { rate, pitch } = narratorVoice(bedtimeRef.current);
+        utter.rate = rate; // slower, gentle
+        utter.pitch = pitch; // warm, friendly
+        return utter;
+      });
+      queue.onSpeakingChange = (isSpeaking) => {
+        setSpeaking(isSpeaking);
+        // An idle queue can't be paused (it also un-pauses the synth).
+        if (!isSpeaking) setPaused(false);
+      };
+      queueRef.current = queue;
+    }
+    return queueRef.current;
   }, [synthSupported]);
 
   const stop = useCallback(() => {
-    if (synthSupported) window.speechSynthesis.cancel();
+    getQueue()?.clear();
     howlRef.current?.stop();
     howlRef.current?.unload();
     howlRef.current = null;
-    setIsPlaying(false);
-  }, [synthSupported]);
+    setUrlPlaying(false);
+  }, [getQueue]);
 
-  const speak = useCallback(
+  const enqueue = useCallback(
     (text: string) => {
-      if (!synthSupported || mutedRef.current || !text.trim()) return;
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      if (voiceRef.current) {
-        utter.voice = voiceRef.current;
-        utter.lang = voiceRef.current.lang;
-      }
-      utter.rate = 0.85; // slower, gentle
-      utter.pitch = 1.15; // warm, friendly
-      utter.onstart = () => setIsPlaying(true);
-      utter.onend = () => setIsPlaying(false);
-      utter.onerror = () => setIsPlaying(false);
-      window.speechSynthesis.speak(utter);
+      if (mutedRef.current) return;
+      getQueue()?.enqueue(text);
     },
-    [synthSupported]
+    [getQueue]
   );
+
+  const speakNow = useCallback(
+    (text: string) => {
+      // clear() also hands a paused synth back running, so this is audible.
+      getQueue()?.clear();
+      setPaused(false);
+      if (mutedRef.current) return;
+      // A page is many sentences: one utterance per sentence, not one long one.
+      getQueue()?.enqueueSentences(text);
+    },
+    [getQueue]
+  );
+
+  const pause = useCallback(() => {
+    const queue = getQueue();
+    queue?.pause();
+    setPaused(queue?.paused ?? false);
+  }, [getQueue]);
+
+  const resume = useCallback(() => {
+    getQueue()?.resume();
+    setPaused(false);
+  }, [getQueue]);
 
   const playUrl = useCallback(
     (url: string) => {
@@ -106,9 +125,9 @@ export function useAudio(): UseAudio {
       const howl = new Howl({
         src: [url],
         html5: true,
-        onplay: () => setIsPlaying(true),
-        onend: () => setIsPlaying(false),
-        onstop: () => setIsPlaying(false),
+        onplay: () => setUrlPlaying(true),
+        onend: () => setUrlPlaying(false),
+        onstop: () => setUrlPlaying(false),
       });
       howlRef.current = howl;
       howl.play();
@@ -117,18 +136,28 @@ export function useAudio(): UseAudio {
   );
 
   const toggleMuted = useCallback(() => {
-    setMuted((m) => {
-      const next = !m;
-      if (next) {
-        if (synthSupported) window.speechSynthesis.cancel();
-        howlRef.current?.stop();
-        setIsPlaying(false);
-      }
-      return next;
-    });
-  }, [synthSupported]);
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    setMuted(next);
+    if (next) {
+      getQueue()?.clear();
+      howlRef.current?.stop();
+      setUrlPlaying(false);
+    }
+  }, [getQueue]);
 
   useEffect(() => () => stop(), [stop]);
 
-  return { isPlaying, speak, playUrl, stop, toggleMuted, muted };
+  return {
+    isPlaying: (speaking && !paused) || urlPlaying,
+    isPaused: paused,
+    enqueue,
+    speakNow,
+    pause,
+    resume,
+    stop,
+    playUrl,
+    toggleMuted,
+    muted,
+  };
 }
