@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useStoryStore } from '@/store/storyStore';
 import { useStoryStream } from '@/hooks/useStoryStream';
+import { ACTIVE_STORY_KEY } from '@/hooks/useActiveStory';
 import { useAudio } from '@/hooks/useAudio';
 import { useMusic } from '@/hooks/useMusic';
 import { avatarById } from '@/lib/theme';
 import { chapterEnding, chapterLabel, shouldAskCuriosity } from '@/lib/chapterFlow';
-import type { EndStoryResponse } from '@/api/types';
+import type { ChapterMeta, EndStoryResponse } from '@/api/types';
 import { StoryBook } from '@/components/story/StoryBook';
 import { StoryChoiceCards } from '@/components/story/StoryChoiceCards';
 import { CharacterPanel } from '@/components/story/CharacterPanel';
@@ -22,6 +23,7 @@ import { FinishedStorybook } from '@/components/story/FinishedStorybook';
 
 export function Story() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const sessionId = useStoryStore((s) => s.sessionId);
   const storyTitle = useStoryStore((s) => s.storyTitle);
@@ -36,24 +38,29 @@ export function Story() {
   const recordChoice = useStoryStore((s) => s.recordChoice);
   const completedChapters = useStoryStore((s) => s.completedChapters);
   const addCompletedChapter = useStoryStore((s) => s.addCompletedChapter);
+  const resumed = useStoryStore((s) => s.resumed);
+  const resumedLastChapter = useStoryStore((s) => s.resumedLastChapter);
+  const clearResumed = useStoryStore((s) => s.clearResumed);
 
   const stream = useStoryStream();
   const audio = useAudio();
   const { duck } = useMusic();
 
-  const [chapterCount, setChapterCount] = useState(0);
   const [certificate, setCertificate] = useState<EndStoryResponse | null>(null);
   const [viewingLatest, setViewingLatest] = useState(true);
   const narratedCount = useRef(0);
 
   const childName = activeProfile?.name ?? '';
 
-  // Kick off the first stream when we land with a session.
+  // Kick off the first stream when we land with a new session. A resumed story
+  // has nothing pending: the book opens on its last page and streaming starts
+  // with the first choice.
   useEffect(() => {
     if (!sessionId) {
       navigate('/setup');
       return;
     }
+    if (resumed) return;
     stream.open(sessionId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
@@ -97,10 +104,9 @@ export function Story() {
     [narrationState, pause, resume, speakNow]
   );
 
-  // When a chapter finishes streaming, count it and store it for the book.
+  // When a chapter finishes streaming, store it for the book.
   useEffect(() => {
     if (stream.done && stream.meta) {
-      setChapterCount((c) => c + 1);
       const m = stream.meta;
       addCompletedChapter({
         chapterNumber: m.chapter_number,
@@ -115,11 +121,17 @@ export function Story() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream.done]);
 
+  // The chapter whose choices (or goodnight) are on offer: the streamed one, or on a
+  // resumed story the saved last chapter, until the first choice starts a stream.
+  const meta: ChapterMeta | null = resumed ? resumedLastChapter : stream.meta;
+  const streamDone = resumed || stream.done;
+
   const choiceMutation = useMutation({
     mutationFn: api.makeChoice,
     onSuccess: () => {
       if (sessionId) {
         narratedCount.current = 0;
+        clearResumed();
         stream.open(sessionId);
       }
     },
@@ -134,6 +146,8 @@ export function Story() {
     mutationFn: api.endStory,
     onSuccess: (res) => {
       audio.stop();
+      // A finished story is no longer one to "Continue".
+      void queryClient.invalidateQueries({ queryKey: ACTIVE_STORY_KEY });
       setCertificate(res);
     },
   });
@@ -143,15 +157,15 @@ export function Story() {
       if (!sessionId) return;
       recordChoice(choice);
       audio.stop();
-      const question = stream.meta?.curiosity_question;
+      const question = meta?.curiosity_question;
       // Show the curiosity question first (after a choice), then advance.
       // (The final chapter has no choices, so this never opens a question after it.)
-      if (question && shouldAskCuriosity(question, stream.meta?.is_final ?? false)) {
+      if (question && shouldAskCuriosity(question, meta?.is_final ?? false)) {
         openCuriosity(question);
       }
       choiceMutation.mutate({ session_id: sessionId, choice });
     },
-    [sessionId, stream.meta, recordChoice, openCuriosity, choiceMutation, audio]
+    [sessionId, meta, recordChoice, openCuriosity, choiceMutation, audio]
   );
 
   const handleCuriosityAnswer = (answer: string) => {
@@ -161,6 +175,13 @@ export function Story() {
 
   const handleEnd = () => {
     if (sessionId) endMutation.mutate({ session_id: sessionId });
+  };
+
+  // Every chapter is saved on the server as it finishes, so leaving loses nothing:
+  // go home and refresh the "Continue" card there.
+  const handleLeave = () => {
+    void queryClient.invalidateQueries({ queryKey: ACTIVE_STORY_KEY });
+    navigate('/');
   };
 
   if (certificate) {
@@ -178,35 +199,37 @@ export function Story() {
     );
   }
 
-  const meta = stream.meta;
-  const streaming = !stream.done || choiceMutation.isPending;
-  const choicesReady =
-    stream.done && meta !== null && !choiceMutation.isPending && viewingLatest;
+  const chapterCount = completedChapters.length;
+  const streaming = !streamDone || choiceMutation.isPending;
+  const choicesReady = streamDone && meta !== null && !choiceMutation.isPending && viewingLatest;
 
-  const liveChapter = meta
-    ? {
-        chapterTitle: meta.chapter_title,
-        chapterNumber: meta.chapter_number,
-        mood: meta.mood,
-        imageUrl: meta.image_url,
-        sceneDescription: meta.scene_description,
-        sentences: stream.sentences,
-      }
-    : {
-        mood: 'wonder' as const,
-        sentences: stream.sentences,
-      };
+  // A resumed story's last chapter is already in the book; no page is live until the next stream.
+  const liveChapter = resumed
+    ? null
+    : meta
+      ? {
+          chapterTitle: meta.chapter_title,
+          chapterNumber: meta.chapter_number,
+          mood: meta.mood,
+          imageUrl: meta.image_url,
+          sceneDescription: meta.scene_description,
+          sentences: stream.sentences,
+        }
+      : {
+          mood: 'wonder' as const,
+          sentences: stream.sentences,
+        };
 
   return (
     <div className="relative min-h-dvh">
       <StarField count={16} />
 
       <header className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-          ← Leave story
+        <Button variant="ghost" size="sm" onClick={handleLeave}>
+          ← Save &amp; leave
         </Button>
         <span className="font-display text-lg text-parchment/80">
-          {chapterLabel(chapterCount + (stream.done ? 0 : 1), maxChapters)}
+          {chapterLabel(chapterCount + (streamDone ? 0 : 1), maxChapters)}
         </span>
         <div className="flex items-center gap-1">
           <MusicToggle />

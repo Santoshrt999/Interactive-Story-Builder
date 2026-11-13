@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '@/api/client';
 import { useProfiles, useCreateProfile } from '@/hooks/useProfiles';
+import { ACTIVE_STORY_KEY, useActiveStory } from '@/hooks/useActiveStory';
+import { useMusic } from '@/hooks/useMusic';
 import { useStoryStore } from '@/store/storyStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { eveningKey, shouldSuggestBedtime } from '@/lib/bedtime';
+import { chapterLabel } from '@/lib/chapterFlow';
+import { relativeDay } from '@/lib/relativeDay';
 import {
   AVATARS,
   avatarById,
@@ -209,6 +215,75 @@ function PinPad({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => 
   );
 }
 
+/**
+ * "📖 Continue <story> — Chapter 2 of 3": one tap reopens the child's unfinished
+ * story where it stopped. Shows nothing while loading, on an error, or when
+ * there is no unfinished story — it never gets in the way of a new adventure.
+ */
+function ContinueStory({ childId }: { childId: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { clearFade } = useMusic();
+  const resumeSession = useStoryStore((s) => s.resumeSession);
+  const { data: active } = useActiveStory(childId);
+
+  const resume = useMutation({
+    mutationFn: api.resumeStory,
+    onSuccess: (r) => {
+      resumeSession(r);
+      // A bedtime story brings its look, music and narrator voice along.
+      if (r.bedtime) useSettingsStore.getState().setBedtime(true);
+      clearFade(); // a story is starting again: music plays after a bedtime fade-out
+      navigate('/story');
+    },
+    onError: (err) => {
+      // 404/409: the story is gone or already finished, so stop offering it.
+      if (isStoryGone(err)) void queryClient.invalidateQueries({ queryKey: ACTIVE_STORY_KEY });
+    },
+  });
+
+  const when = active ? relativeDay(new Date(active.updated_at), new Date()) : '';
+
+  return (
+    <>
+      {active && (
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={() => resume.mutate(active.story_id)}
+          disabled={resume.isPending}
+          className="h-auto w-full max-w-2xl flex-col gap-0.5 whitespace-normal text-center leading-snug"
+        >
+          {resume.isPending ? (
+            <span>Opening your book…</span>
+          ) : (
+            <>
+              <span>
+                📖 Continue <em className="font-display">{active.title}</em> —{' '}
+                <span className="whitespace-nowrap">
+                  {chapterLabel(active.chapter_count, active.max_chapters)}
+                </span>
+              </span>
+              {when && <span className="text-sm font-normal opacity-80">Left off {when}</span>}
+            </>
+          )}
+        </Button>
+      )}
+      {resume.isError && (
+        <p role="alert" className="max-w-xl text-center text-blossom">
+          {isStoryGone(resume.error)
+            ? 'That story can’t be continued any more. Why not start a new adventure?'
+            : 'We couldn’t open your story just now. Please try again.'}
+        </p>
+      )}
+    </>
+  );
+}
+
+function isStoryGone(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 404 || err.status === 409);
+}
+
 export function Home() {
   const navigate = useNavigate();
   const { data: profiles, isLoading, isError, isSuccess } = useProfiles();
@@ -371,8 +446,9 @@ export function Home() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="mt-12 flex justify-center"
+              className="mt-12 flex flex-col items-center gap-6"
             >
+              <ContinueStory key={activeProfile.id} childId={activeProfile.id} />
               <Button variant="magic" size="xl" onClick={startAdventure} className="text-2xl">
                 🚀 Start a new adventure, {nameWithHeart(activeProfile.name)}!
               </Button>

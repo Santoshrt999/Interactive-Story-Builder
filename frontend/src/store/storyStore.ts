@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ChildProfile, ChapterMeta, StartStoryBody } from '@/api/types';
+import type {
+  Chapter,
+  ChapterMeta,
+  ChildProfile,
+  ResumeResponse,
+  StartStoryBody,
+} from '@/api/types';
 
 /** A chapter as assembled on the client from the SSE stream. */
 export interface AssembledChapter {
@@ -17,6 +23,19 @@ export interface CompletedChapter {
   mood: ChapterMeta['mood'];
   sceneDescription: string;
   vocabulary: string[];
+}
+
+/** A finished chapter as the server returns it (on resume), shaped for the book. */
+export function toCompletedChapter(c: Chapter): CompletedChapter {
+  return {
+    chapterNumber: c.chapter_number,
+    title: c.chapter_title,
+    text: c.chapter_text,
+    imageUrl: c.image_url,
+    mood: c.mood,
+    sceneDescription: c.scene_description,
+    vocabulary: c.new_vocabulary,
+  };
 }
 
 /** The hero the child dreamed up (what the story was started from, minus the child and the mode). */
@@ -45,6 +64,14 @@ interface StoryState {
   /** Completed chapters, accumulated as each one finishes streaming. */
   completedChapters: CompletedChapter[];
 
+  /**
+   * This session was just rebuilt from a saved, unfinished story: the book is
+   * open on its last page and nothing is streaming. Cleared by the first choice.
+   */
+  resumed: boolean;
+  /** The saved story's last chapter, which drives the choices (or the goodnight) while `resumed`. */
+  resumedLastChapter: Chapter | null;
+
   // UI flags
   isRecording: boolean;
   curiosityOpen: boolean;
@@ -60,6 +87,10 @@ interface StoryState {
     bedtime: boolean;
     maxChapters: number;
   }) => void;
+  /** Open a saved story where it stopped. */
+  resumeSession: (r: ResumeResponse) => void;
+  /** The child picked a choice on a resumed story: from here it streams as usual. */
+  clearResumed: () => void;
   addChapter: (chapter: AssembledChapter) => void;
   addCompletedChapter: (chapter: CompletedChapter) => void;
   recordChoice: (choice: string) => void;
@@ -84,6 +115,8 @@ export const useStoryStore = create<StoryState>()(
       currentChapterIndex: 0,
       choicesMade: [],
       completedChapters: [],
+      resumed: false,
+      resumedLastChapter: null,
 
       isRecording: false,
       curiosityOpen: false,
@@ -103,9 +136,34 @@ export const useStoryStore = create<StoryState>()(
           currentChapterIndex: 0,
           choicesMade: [],
           completedChapters: [],
+          resumed: false,
+          resumedLastChapter: null,
           curiosityOpen: false,
           pendingCuriosity: null,
         }),
+
+      resumeSession: (r) => {
+        const last = r.chapters[r.chapters.length - 1] ?? null;
+        set({
+          sessionId: r.session_id,
+          storyId: r.story_id,
+          storyTitle: r.title,
+          setup: r.setup,
+          bedtime: r.bedtime,
+          maxChapters: r.max_chapters,
+          chapters: [],
+          currentChapterIndex: 0,
+          choicesMade: [],
+          completedChapters: r.chapters.map(toCompletedChapter),
+          // With no chapter saved there is nothing to show: stream as a new story would.
+          resumed: last !== null,
+          resumedLastChapter: last,
+          curiosityOpen: false,
+          pendingCuriosity: null,
+        });
+      },
+
+      clearResumed: () => set({ resumed: false, resumedLastChapter: null }),
 
       addChapter: (chapter) =>
         set((s) => ({
@@ -139,6 +197,8 @@ export const useStoryStore = create<StoryState>()(
           currentChapterIndex: 0,
           choicesMade: [],
           completedChapters: [],
+          resumed: false,
+          resumedLastChapter: null,
           curiosityOpen: false,
           pendingCuriosity: null,
           isRecording: false,
