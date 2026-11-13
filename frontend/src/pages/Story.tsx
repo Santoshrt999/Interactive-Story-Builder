@@ -52,14 +52,38 @@ export function Story() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Approx-synced narration: speak each newly-arrived sentence.
+  // Narration: queue each newly-arrived sentence. The narrator reads them in
+  // order, however fast they stream in, so nothing is skipped.
+  const { enqueue, speakNow, pause, resume, stop } = audio;
   useEffect(() => {
-    if (stream.sentences.length > narratedCount.current) {
-      const fresh = stream.sentences.slice(narratedCount.current);
-      narratedCount.current = stream.sentences.length;
-      audio.speak(fresh.join(' '));
+    if (stream.sentences.length < narratedCount.current) {
+      // The stream was re-opened and started over; forget the old run.
+      narratedCount.current = 0;
+      stop();
     }
-  }, [stream.sentences, audio]);
+    const fresh = stream.sentences.slice(narratedCount.current);
+    narratedCount.current = stream.sentences.length;
+    for (const sentence of fresh) enqueue(sentence);
+  }, [stream.sentences, enqueue, stop]);
+
+  // Flipping back to an earlier page reads that page. Returning to the latest
+  // page does not start reading on its own.
+  const handlePageChange = useCallback(
+    (p: { isLatest: boolean; text: string }) => {
+      if (!p.isLatest && p.text) speakNow(p.text);
+    },
+    [speakNow]
+  );
+
+  const narrationState = audio.isPaused ? 'paused' : audio.isPlaying ? 'playing' : 'idle';
+  const handleNarrationToggle = useCallback(
+    (pageText: string) => {
+      if (narrationState === 'paused') resume();
+      else if (narrationState === 'playing') pause();
+      else speakNow(pageText);
+    },
+    [narrationState, pause, resume, speakNow]
+  );
 
   // When a chapter finishes streaming, count it and store it for the book.
   useEffect(() => {
@@ -190,6 +214,12 @@ export function Story() {
               live={liveChapter}
               streaming={streaming}
               onViewingChange={setViewingLatest}
+              onPageChange={handlePageChange}
+              narration={
+                audio.muted
+                  ? undefined
+                  : { state: narrationState, onToggle: handleNarrationToggle }
+              }
             />
           </div>
         </section>
