@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, get_args
 
 from sqlalchemy import func, select
 
@@ -22,6 +22,7 @@ from app.agents.image_agent import image_agent
 from app.agents.vocab_agent import vocab_agent
 from app.core.logging import get_logger
 from app.models.db import ChildProfile, Story, VocabularyEntry, async_session_maker
+from app.models.schemas import Mood
 from app.services.claude_service import claude_service
 from app.services.redis_service import redis_service
 
@@ -29,6 +30,41 @@ log = get_logger(__name__)
 
 MAX_CHAPTERS = 8
 BEDTIME_CHAPTERS = 3
+
+
+_MOODS = frozenset(get_args(Mood))
+_DEFAULT_MOOD = "wonder"
+
+
+def _text(value: Any, default: str = "") -> str:
+    return value if isinstance(value, str) else default
+
+
+def _text_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if item is not None]
+
+
+def normalize_chapter_fields(chapter: dict[str, Any], chapter_number: int) -> dict[str, Any]:
+    """Coerce a chapter's content fields into what the `Chapter` schema accepts.
+
+    The model's JSON is stored as-is, so a field can be off-enum (`mood`), null
+    or the wrong type. Applied both when a chapter is built and when a stored one
+    is resumed (rows written earlier may already be bad), so one malformed chapter
+    can never make a story unresumable.
+    """
+    mood = chapter.get("mood")
+    return {
+        "chapter_title": _text(chapter.get("chapter_title"), f"Chapter {chapter_number}"),
+        "chapter_text": _text(chapter.get("chapter_text")),
+        "choices": _text_list(chapter.get("choices")),
+        "scene_description": _text(chapter.get("scene_description")),
+        "mood": mood if isinstance(mood, str) and mood in _MOODS else _DEFAULT_MOOD,
+        "new_vocabulary": _text_list(chapter.get("new_vocabulary")),
+        "curiosity_question": _text(chapter.get("curiosity_question")),
+        "image_url": _text(chapter.get("image_url")),
+    }
 
 
 class StoryComplete(ValueError):
@@ -146,16 +182,27 @@ class StoryAgent:
             raise StoryComplete("story is complete")
 
         max_chapters = int(story.max_chapters)
-        chapters = [
-            {
-                **chapter,
-                # Chapters stored before bedtime mode lack is_final.
-                "is_final": chapter.get(
-                    "is_final", chapter.get("chapter_number", index) >= max_chapters
-                ),
-            }
-            for index, chapter in enumerate(story.chapters, start=1)
-        ]
+        chapters: list[dict[str, Any]] = []
+        for index, stored in enumerate(story.chapters, start=1):
+            number = stored.get("chapter_number")
+            if not isinstance(number, int) or isinstance(number, bool):
+                number = index
+            # Chapters stored before bedtime mode lack is_final.
+            is_final = stored.get("is_final")
+            if not isinstance(is_final, bool):
+                is_final = number >= max_chapters
+            chapters.append(
+                {
+                    "chapter_number": number,
+                    "is_final": is_final,
+                    **normalize_chapter_fields(stored, number),
+                }
+            )
+
+        # Time spent so far: first chapter to last activity. The hours or days the
+        # story sat unfinished do not count; the clock restarts now.
+        active = story_last_activity(story) - as_utc(story.created_at)
+        prior_active_seconds = max(0, int(active.total_seconds()))
 
         session_id = str(uuid.uuid4())
         context: dict[str, Any] = {
@@ -174,7 +221,8 @@ class StoryAgent:
             "chapters": chapters,
             "choices": list(story.choices_made or []),
             "curiosity_answers": list(story.curiosity_answers or []),
-            "started_at": as_utc(story.created_at).isoformat(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "prior_active_seconds": prior_active_seconds,
         }
         await redis_service.set(session_id, context)
 
@@ -282,7 +330,10 @@ class StoryAgent:
             all_words.extend(ch.get("new_vocabulary", []))
         vocab = await vocab_agent.define(all_words, age=context.get("age", 7))
 
-        duration = self._elapsed_seconds(context.get("started_at"))
+        # A resumed session carries the active time from before the restart.
+        duration = int(context.get("prior_active_seconds") or 0) + self._elapsed_seconds(
+            context.get("started_at")
+        )
         achievement = self._achievement(context["theme"], len(chapters))
         certificate = {
             "child_name": context.get("child_name", "Explorer"),
@@ -344,41 +395,33 @@ class StoryAgent:
             total_chapters=self._max_chapters(context),
             bedtime=bool(context.get("bedtime", False)),
         )
+        fields = normalize_chapter_fields(raw, chapter_number)
 
-        choices = list(raw.get("choices") or [])
+        choices = fields["choices"]
         while len(choices) < 3:
             choices.append("Keep exploring")
         choices = choices[:3]
 
-        scene = raw.get("scene_description", "")
-        mood = raw.get("mood", "wonder")
-
         image_url = await image_agent.illustrate(
-            scene_description=scene,
+            scene_description=fields["scene_description"],
             character_name=context["character_name"],
             character_archetype=context["character_archetype"],
             world=context["world"],
-            mood=mood,
+            mood=fields["mood"],
         )
 
         question = await curiosity_agent.ask(
-            chapter_text=raw.get("chapter_text", ""),
+            chapter_text=fields["chapter_text"],
             theme=context["theme"],
             chapter_number=chapter_number,
             age=context.get("age", 7),
         )
 
         return {
+            **fields,
             "chapter_number": chapter_number,
             "is_final": chapter_number >= self._max_chapters(context),
-            "chapter_title": raw.get(
-                "chapter_title", f"Chapter {chapter_number}"
-            ),
-            "chapter_text": raw.get("chapter_text", ""),
             "choices": choices,
-            "scene_description": scene,
-            "mood": mood,
-            "new_vocabulary": list(raw.get("new_vocabulary") or []),
             "curiosity_question": question,
             "image_url": image_url,
         }

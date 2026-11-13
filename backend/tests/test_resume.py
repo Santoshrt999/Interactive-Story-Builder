@@ -1,11 +1,16 @@
 """Resume unfinished stories across server restarts."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 
+from app.agents.image_agent import image_agent
+from app.agents.story_agent import story_agent
 from app.core.config import settings
+from app.services.claude_service import claude_service
 from app.services.redis_service import redis_service
 from conftest import LEGACY_STORY_ID
 
@@ -262,3 +267,113 @@ def test_resume_computes_is_final_for_chapters_stored_without_it(legacy_db_clien
     resumed = _resume(client, LEGACY_STORY_ID).json()
     assert [c["is_final"] for c in resumed["chapters"]] == [False, True]
     assert _choose(client, resumed["session_id"]).status_code == 409
+
+
+# --- bad chapter content never makes a story unresumable --------------------------
+
+
+def _bad_model_chapter(**kwargs) -> dict:
+    """What an unconstrained model reply can look like: off-enum or null fields."""
+    return {
+        "chapter_number": kwargs["chapter_number"],
+        "chapter_title": None,
+        "chapter_text": "The moon hummed a lullaby.",
+        "choices": "not a list",
+        "scene_description": None,
+        "mood": "sleepy",
+        "new_vocabulary": None,
+    }
+
+
+def test_resume_normalizes_bad_stored_chapter_fields(client):
+    started = _start(client)
+    story_id = started["story_id"]
+    stored = json.loads(_db("SELECT chapters FROM stories WHERE id = ?", (story_id,))[0][0])
+    stored[0].update(
+        {
+            "mood": "sleepy",
+            "chapter_title": None,
+            "chapter_text": None,
+            "scene_description": None,
+            "choices": "not a list",
+            "new_vocabulary": None,
+        }
+    )
+    _db("UPDATE stories SET chapters = ? WHERE id = ?", (json.dumps(stored), story_id))
+
+    assert _active(client).status_code == 200
+    response = _resume(client, story_id)
+    assert response.status_code == 200, response.text
+    chapter = response.json()["chapters"][0]
+    assert chapter["mood"] == "wonder"
+    assert chapter["chapter_title"] == "Chapter 1"
+    assert chapter["chapter_text"] == "" and chapter["scene_description"] == ""
+    assert chapter["choices"] == [] and chapter["new_vocabulary"] == []
+
+
+def test_build_chapter_stores_valid_fields_for_bad_model_output(monkeypatch):
+    seen: dict = {}
+
+    async def fake_generate(**kwargs):
+        return _bad_model_chapter(**kwargs)
+
+    real_illustrate = image_agent.illustrate
+
+    async def spy_illustrate(**kwargs):
+        seen.update(kwargs)
+        return await real_illustrate(**kwargs)
+
+    monkeypatch.setattr(claude_service, "generate_chapter", fake_generate)
+    monkeypatch.setattr(image_agent, "illustrate", spy_illustrate)
+    context = {
+        "session_id": "s", "character_name": "Luna", "character_archetype": "kind",
+        "world": "forest", "theme": "friendship", "age": 6, "max_chapters": 8,
+    }
+    chapter = asyncio.run(
+        story_agent._build_chapter(
+            context, chapter_number=3, last_choice=None, curiosity_answer=None
+        )
+    )
+    assert chapter["mood"] == "wonder" and seen["mood"] == "wonder"
+    assert chapter["chapter_title"] == "Chapter 3"
+    assert chapter["scene_description"] == "" and seen["scene_description"] == ""
+    assert chapter["new_vocabulary"] == []
+    assert chapter["choices"] == ["Keep exploring"] * 3  # non-list choices -> padded defaults
+    assert chapter["chapter_text"] == "The moon hummed a lullaby."
+    assert chapter["is_final"] is False and chapter["chapter_number"] == 3
+
+
+def test_story_from_bad_model_output_streams_and_resumes(client, monkeypatch):
+    async def fake_generate(**kwargs):
+        return _bad_model_chapter(**kwargs)
+
+    monkeypatch.setattr(claude_service, "generate_chapter", fake_generate)
+    started = _start(client)
+    _, meta = _stream(client, started["session_id"])
+    assert meta["mood"] == "wonder" and meta["chapter_title"] == "Chapter 1"
+
+    _restart_server()
+    response = _resume(client, started["story_id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["chapters"][0]["mood"] == "wonder"
+
+
+# --- duration counts active time, not the gap between sessions --------------------
+
+
+def test_resumed_story_duration_excludes_time_away(client):
+    started = _start(client)
+    story_id = started["story_id"]
+    created = datetime.now(timezone.utc) - timedelta(days=2)
+    stamp = lambda value: value.strftime("%Y-%m-%d %H:%M:%S.%f")  # noqa: E731 - SQLite's own format
+    _db(
+        "UPDATE stories SET created_at = ?, updated_at = ? WHERE id = ?",
+        (stamp(created), stamp(created + timedelta(minutes=10)), story_id),
+    )
+
+    _restart_server()
+    resumed = _resume(client, story_id).json()
+    assert client.post("/api/story/end", json={"session_id": resumed["session_id"]}).status_code == 200
+
+    duration = _db("SELECT duration_seconds FROM stories WHERE id = ?", (story_id,))[0][0]
+    assert 600 <= duration <= 660  # the 10 active minutes before the restart, not ~48 hours
