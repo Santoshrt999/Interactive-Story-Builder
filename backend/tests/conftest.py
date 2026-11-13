@@ -35,7 +35,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.db import engine  # noqa: E402
+from app.routers import parent as parent_router  # noqa: E402
+from app.services.parent_auth import parent_auth  # noqa: E402
 from app.services.redis_service import redis_service  # noqa: E402
+
+# Cheap bcrypt for tests (production uses cost 12, ~0.25 s per hash/check, which
+# adds up over the many unlocks the parent-lock tests make). `checkpw` reads the
+# cost from the stored hash, so this only affects newly hashed PINs.
+parent_router.BCRYPT_ROUNDS = 4
 
 # Safety net: if the env override ever stops taking effect, fail loudly instead
 # of letting the suite drop tables in the real database.
@@ -50,12 +57,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
 
 def _reset_state() -> None:
-    """Return every piece of persisted app state to "never launched".
-
-    Task 2 extension point: also reset the in-memory `parent_auth` state here
-    (tokens, failed-attempt counters, cool-down) once that module exists.
-    """
+    """Return every piece of persisted app state to "never launched"."""
     redis_service._memory.clear()
+    # In-memory parent lock: tokens, failed-attempt counter, cool-down, challenges.
+    parent_auth.clear()
     with closing(sqlite3.connect(_DB_PATH)) as db:
         tables = [
             row[0]
@@ -146,6 +151,15 @@ def client() -> Iterator[TestClient]:
     _reset_state()
     with _running_app() as test_client:
         yield test_client
+
+
+@pytest.fixture
+def parent_token(client: TestClient) -> str:
+    """Household PIN set to "1234" and unlocked; returns the live X-Parent-Token."""
+    assert client.post("/api/parent/pin", json={"pin": "1234"}).status_code == 204
+    response = client.post("/api/parent/unlock", json={"pin": "1234"})
+    assert response.status_code == 200
+    return response.json()["token"]
 
 
 @pytest.fixture

@@ -170,3 +170,37 @@ class DashboardResponse(BaseModel):
     themes: DashboardThemes
     creativity_score: float
     recent_curiosity_answers: list[str]
+
+
+# --- Parent lock ------------------------------------------------------------
+
+# ASCII digits only: `\d` would also accept e.g. Arabic-Indic digits.
+_PIN_PATTERN = r"^[0-9]{4}$"
+
+
+class PinIn(BaseModel):
+    pin: str = Field(pattern=_PIN_PATTERN)
+
+
+class ChangePinIn(BaseModel):
+    new_pin: str = Field(pattern=_PIN_PATTERN)
+
+
+class ParentStatus(BaseModel):
+    pin_set: bool
+
+
+class UnlockOut(BaseModel):
+    token: str
+    expires_at: str
+
+
+class ResetChallengeOut(BaseModel):
+    challenge_id: str
+    question: str
+
+
+class ResetIn(BaseModel):
+    challenge_id: str
+    answer: int
+    new_pin: str = Field(pattern=_PIN_PATTERN)
