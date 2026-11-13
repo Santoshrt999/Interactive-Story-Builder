@@ -36,3 +36,4 @@ backend/static/images/gen_*
 # ...keep the committed placeholder + curated animal scene SVGs
 !backend/static/images/placeholder_*.svg
 !backend/static/images/scene_*.svg
+.logs/
