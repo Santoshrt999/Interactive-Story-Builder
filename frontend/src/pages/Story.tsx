@@ -6,6 +6,7 @@ import { api } from '@/api/client';
 import { useStoryStore } from '@/store/storyStore';
 import { useStoryStream } from '@/hooks/useStoryStream';
 import { useAudio } from '@/hooks/useAudio';
+import { useMusic } from '@/hooks/useMusic';
 import { avatarById } from '@/lib/theme';
 import type { EndStoryResponse } from '@/api/types';
 import { StoryBook } from '@/components/story/StoryBook';
@@ -13,6 +14,7 @@ import { StoryChoiceCards } from '@/components/story/StoryChoiceCards';
 import { CharacterPanel } from '@/components/story/CharacterPanel';
 import { CuriosityPrompt } from '@/components/story/CuriosityPrompt';
 import { Button } from '@/components/ui/Button';
+import { MusicToggle } from '@/components/ui/MusicToggle';
 import { Card } from '@/components/ui/Card';
 import { StarField } from '@/components/ui/StarField';
 import { FinishedStorybook } from '@/components/story/FinishedStorybook';
@@ -34,6 +36,7 @@ export function Story() {
 
   const stream = useStoryStream();
   const audio = useAudio();
+  const { duck } = useMusic();
 
   const [chapterCount, setChapterCount] = useState(0);
   const [certificate, setCertificate] = useState<EndStoryResponse | null>(null);
@@ -74,6 +77,12 @@ export function Story() {
     },
     [speakNow]
   );
+
+  // Music dips about 12 dB while the narrator speaks, and recovers after (also on leaving).
+  useEffect(() => {
+    duck(audio.isPlaying);
+  }, [duck, audio.isPlaying]);
+  useEffect(() => () => duck(false), [duck]);
 
   const narrationState = audio.isPaused ? 'paused' : audio.isPlaying ? 'playing' : 'idle';
   const handleNarrationToggle = useCallback(
@@ -194,14 +203,17 @@ export function Story() {
         <span className="font-display text-lg text-parchment/80">
           Chapter {Math.max(1, chapterCount + (stream.done ? 0 : 1))}
         </span>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleEnd}
-          disabled={endMutation.isPending || chapterCount === 0}
-        >
-          {endMutation.isPending ? 'Wrapping up…' : 'End story 🏆'}
-        </Button>
+        <div className="flex items-center gap-1">
+          <MusicToggle />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleEnd}
+            disabled={endMutation.isPending || chapterCount === 0}
+          >
+            {endMutation.isPending ? 'Wrapping up…' : 'End story 🏆'}
+          </Button>
+        </div>
       </header>
 
       <main className="mx-auto grid max-w-[1600px] gap-6 px-4 pb-8 lg:grid-cols-12">

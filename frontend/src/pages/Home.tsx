@@ -13,6 +13,7 @@ import {
 } from '@/lib/theme';
 import type { ChildProfile } from '@/api/types';
 import { Button } from '@/components/ui/Button';
+import { MusicToggle } from '@/components/ui/MusicToggle';
 import { Card } from '@/components/ui/Card';
 import { StarField } from '@/components/ui/StarField';
 import { Spinner } from '@/components/ui/Spinner';
@@ -249,9 +250,12 @@ export function Home() {
           <span className="animate-float-slow text-4xl">📖</span>
           <span className="font-display text-2xl text-parchment text-glow">StoryWeaver</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setShowPin(true)}>
-          👪 Parents
-        </Button>
+        <div className="flex items-center gap-1">
+          <MusicToggle />
+          <Button variant="ghost" size="sm" onClick={() => setShowPin(true)}>
+            👪 Parents
+          </Button>
+        </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-20 pt-10">

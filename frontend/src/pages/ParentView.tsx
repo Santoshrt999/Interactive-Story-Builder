@@ -4,6 +4,7 @@ import { useDashboard, useStoryHistory } from '@/hooks/useDashboard';
 import { ParentDashboard } from '@/components/dashboard/ParentDashboard';
 import { StoryHistory } from '@/components/dashboard/StoryHistory';
 import { Button } from '@/components/ui/Button';
+import { MusicToggle } from '@/components/ui/MusicToggle';
 import { Card } from '@/components/ui/Card';
 
 export function ParentView() {
@@ -24,9 +25,12 @@ export function ParentView() {
             </p>
           )}
         </div>
-        <Button variant="ghost" onClick={() => navigate('/')}>
-          ← Back to play
-        </Button>
+        <div className="flex items-center gap-1">
+          <MusicToggle />
+          <Button variant="ghost" onClick={() => navigate('/')}>
+            ← Back to play
+          </Button>
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-6 pb-20 pt-8">
