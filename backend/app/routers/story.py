@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from app.agents.story_agent import stories_for_child, story_agent
+from app.agents.story_agent import StoryComplete, stories_for_child, story_agent
 from app.core.logging import get_logger
 from app.models.db import ChildProfile, async_session_maker
 from app.models.schemas import (
@@ -50,6 +50,7 @@ async def start_story(payload: StoryStartRequest) -> StoryStartResponse:
         world=payload.world,
         theme=payload.theme,
         age=age,
+        bedtime=payload.bedtime,
     )
     return StoryStartResponse(**result)
 
@@ -78,12 +79,14 @@ async def stream_story(session_id: str) -> EventSourceResponse:
 @router.post("/choice", response_model=ChoiceResponse)
 async def make_choice(payload: ChoiceRequest) -> ChoiceResponse:
     try:
-        await redis_service.append_choice(payload.session_id, payload.choice)
+        await story_agent.record_choice(payload.session_id, payload.choice)
         chapter = await story_agent.chapter(
             session_id=payload.session_id, last_choice=payload.choice
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="unknown session")
+    except StoryComplete:
+        raise HTTPException(status_code=409, detail="story is complete")
     return ChoiceResponse(
         session_id=payload.session_id, chapter_number=chapter["chapter_number"]
     )
@@ -93,7 +96,7 @@ async def make_choice(payload: ChoiceRequest) -> ChoiceResponse:
 async def curiosity_answer(
     payload: CuriosityAnswerRequest,
 ) -> CuriosityAnswerResponse:
-    await redis_service.append_curiosity_answer(payload.session_id, payload.answer)
+    await story_agent.record_curiosity_answer(payload.session_id, payload.answer)
     return CuriosityAnswerResponse(acknowledged=True)
 
 

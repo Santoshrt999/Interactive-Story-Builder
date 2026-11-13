@@ -28,6 +28,12 @@ from app.services.redis_service import redis_service
 log = get_logger(__name__)
 
 MAX_CHAPTERS = 8
+BEDTIME_CHAPTERS = 3
+
+
+class StoryComplete(ValueError):
+    """Raised when a chapter or choice is requested past the story's last chapter."""
+
 
 # Words like these in a transcript mean "this is a reflection", not a choice.
 _REFLECTION_HINTS = (
@@ -59,9 +65,11 @@ class StoryAgent:
         world: str,
         theme: str,
         age: int,
+        bedtime: bool = False,
     ) -> dict[str, Any]:
         """Create the story + session, generate chapter 1 (stored pending)."""
         session_id = str(uuid.uuid4())
+        max_chapters = BEDTIME_CHAPTERS if bedtime else MAX_CHAPTERS
         story_id = str(uuid.uuid4())
         title = self._make_title(character_name, world, theme)
 
@@ -81,6 +89,8 @@ class StoryAgent:
                 vocabulary_log=[],
                 completed=False,
                 duration_seconds=0,
+                bedtime=bedtime,
+                max_chapters=max_chapters,
             )
             db.add(story)
             await db.commit()
@@ -96,6 +106,8 @@ class StoryAgent:
             "theme": theme,
             "age": age,
             "title": title,
+            "bedtime": bedtime,
+            "max_chapters": max_chapters,
             "chapters": [],
             "choices": [],
             "curiosity_answers": [],
@@ -108,7 +120,13 @@ class StoryAgent:
         )
         await self._store_chapter(context, chapter)
 
-        return {"session_id": session_id, "story_id": story_id, "title": title}
+        return {
+            "session_id": session_id,
+            "story_id": story_id,
+            "title": title,
+            "bedtime": bedtime,
+            "max_chapters": max_chapters,
+        }
 
     async def chapter(
         self,
@@ -123,8 +141,8 @@ class StoryAgent:
             raise KeyError(f"unknown session {session_id}")
 
         next_number = len(context.get("chapters", [])) + 1
-        if next_number > MAX_CHAPTERS:
-            next_number = MAX_CHAPTERS
+        if next_number > self._max_chapters(context):
+            raise StoryComplete("story is complete")
 
         chapter = await self._build_chapter(
             context,
@@ -134,6 +152,34 @@ class StoryAgent:
         )
         await self._store_chapter(context, chapter)
         return chapter
+
+    async def record_choice(self, session_id: str, choice: str) -> None:
+        """Append a choice to the session and to `Story.choices_made`.
+
+        Raises KeyError for an unknown session and StoryComplete once the final
+        chapter exists (there is nothing left to choose for).
+        """
+        context = await redis_service.get(session_id)
+        if context is None:
+            raise KeyError(f"unknown session {session_id}")
+        if len(context.get("chapters", [])) >= self._max_chapters(context):
+            raise StoryComplete("story is complete")
+
+        await redis_service.append_choice(session_id, choice)
+        await self._mirror_to_story(session_id, column="choices_made", key="choices")
+
+    async def record_curiosity_answer(self, session_id: str, answer: str) -> None:
+        """Append a reflection to the session and to `Story.curiosity_answers`.
+
+        An unknown session is ignored (the endpoint acknowledges it regardless).
+        """
+        context = await redis_service.get(session_id)
+        if context is None:
+            return
+        await redis_service.append_curiosity_answer(session_id, answer)
+        await self._mirror_to_story(
+            session_id, column="curiosity_answers", key="curiosity_answers"
+        )
 
     async def process_input(self, *, session_id: str, transcript: str) -> dict[str, Any]:
         """Interpret a child's transcript and advance the story accordingly.
@@ -147,11 +193,11 @@ class StoryAgent:
 
         kind = self._classify(transcript)
         if kind == "reflection":
-            await redis_service.append_curiosity_answer(session_id, transcript)
+            await self.record_curiosity_answer(session_id, transcript)
             return {"kind": "reflection", "chapter": None}
 
         # choice or new idea -> weave into the next chapter
-        await redis_service.append_choice(session_id, transcript)
+        await self.record_choice(session_id, transcript)
         chapter = await self.chapter(session_id=session_id, last_choice=transcript)
         return {"kind": "choice", "chapter": chapter}
 
@@ -230,6 +276,8 @@ class StoryAgent:
             age=context.get("age", 7),
             last_choice=last_choice,
             curiosity_answer=curiosity_answer,
+            total_chapters=self._max_chapters(context),
+            bedtime=bool(context.get("bedtime", False)),
         )
 
         choices = list(raw.get("choices") or [])
@@ -257,6 +305,7 @@ class StoryAgent:
 
         return {
             "chapter_number": chapter_number,
+            "is_final": chapter_number >= self._max_chapters(context),
             "chapter_title": raw.get(
                 "chapter_title", f"Chapter {chapter_number}"
             ),
@@ -280,7 +329,24 @@ class StoryAgent:
             if story is not None:
                 updated = await redis_service.get(session_id)
                 story.chapters = (updated or {}).get("chapters", [])
+                story.updated_at = datetime.now(timezone.utc)
                 await db.commit()
+
+    async def _mirror_to_story(self, session_id: str, *, column: str, key: str) -> None:
+        """Copy the session's `key` list into the Story `column`."""
+        context = await redis_service.get(session_id)
+        if context is None:
+            return
+        async with async_session_maker() as db:
+            story = await db.get(Story, context["story_id"])
+            if story is not None:
+                setattr(story, column, list(context.get(key, [])))
+                await db.commit()
+
+    @staticmethod
+    def _max_chapters(context: dict[str, Any]) -> int:
+        # Sessions created before bedtime mode have no max_chapters key.
+        return int(context.get("max_chapters", MAX_CHAPTERS))
 
     def _classify(self, transcript: str) -> str:
         text = transcript.lower().strip()

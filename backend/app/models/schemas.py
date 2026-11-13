@@ -69,6 +69,7 @@ class Chapter(BaseModel):
     new_vocabulary: list[str]
     curiosity_question: str
     image_url: str
+    is_final: bool
 
 
 class ChapterMeta(BaseModel):
@@ -82,6 +83,7 @@ class ChapterMeta(BaseModel):
     new_vocabulary: list[str]
     curiosity_question: str
     image_url: str
+    is_final: bool
 
 
 # --- Story ------------------------------------------------------------------
@@ -92,12 +94,15 @@ class StoryStartRequest(BaseModel):
     character_archetype: Archetype
     world: World
     theme: Theme
+    bedtime: bool = False
 
 
 class StoryStartResponse(BaseModel):
     session_id: str
     story_id: str
     title: str
+    bedtime: bool
+    max_chapters: int
 
 
 class ChoiceRequest(BaseModel):

@@ -22,6 +22,7 @@ Rules:
 - Celebrate the child's creativity. If they suggest something wild, make it work magically.
 - NEVER use violence, fear, dark themes, or adult content.
 - Characters should model empathy, curiosity, and problem-solving.
+- Bedtime stories (when the request says so): keep every chapter calm and soothing, with no cliffhangers or excitement, and make the final chapter end with the characters peacefully falling asleep. This overrides the narrative-tension rule above.
 
 Output format per chapter (JSON): {"chapter_text","chapter_title","choices":[3],"scene_description","mood":"wonder|excitement|mystery|joy|calm","new_vocabulary":[...]}
 """
