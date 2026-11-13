@@ -8,10 +8,17 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
-from app.agents.story_agent import StoryComplete, stories_for_child, story_agent
+from app.agents.story_agent import (
+    StoryComplete,
+    active_story_for_child,
+    stories_for_child,
+    story_agent,
+    story_last_activity,
+)
 from app.core.logging import get_logger
 from app.models.db import ChildProfile, async_session_maker
 from app.models.schemas import (
+    ActiveStory,
     Certificate,
     ChoiceRequest,
     ChoiceResponse,
@@ -19,6 +26,8 @@ from app.models.schemas import (
     CuriosityAnswerResponse,
     EndRequest,
     EndResponse,
+    ResumeRequest,
+    ResumeResponse,
     StorySummary,
     StoryStartRequest,
     StoryStartResponse,
@@ -53,6 +62,32 @@ async def start_story(payload: StoryStartRequest) -> StoryStartResponse:
         bedtime=payload.bedtime,
     )
     return StoryStartResponse(**result)
+
+
+@router.get("/active/{child_id}", response_model=ActiveStory)
+async def active_story(child_id: str) -> ActiveStory:
+    story = await active_story_for_child(child_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="no unfinished story")
+    return ActiveStory(
+        story_id=story.id,
+        title=story.title,
+        chapter_count=len(story.chapters),
+        max_chapters=story.max_chapters,
+        bedtime=story.bedtime,
+        updated_at=story_last_activity(story).isoformat(),
+    )
+
+
+@router.post("/resume", response_model=ResumeResponse)
+async def resume_story(payload: ResumeRequest) -> ResumeResponse:
+    try:
+        result = await story_agent.resume(payload.story_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="story not found")
+    except StoryComplete:
+        raise HTTPException(status_code=409, detail="story is complete")
+    return ResumeResponse(**result)
 
 
 @router.get("/stream/{session_id}")

@@ -15,13 +15,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.agents.curiosity_agent import curiosity_agent
 from app.agents.image_agent import image_agent
 from app.agents.vocab_agent import vocab_agent
 from app.core.logging import get_logger
-from app.models.db import Story, VocabularyEntry, async_session_maker
+from app.models.db import ChildProfile, Story, VocabularyEntry, async_session_maker
 from app.services.claude_service import claude_service
 from app.services.redis_service import redis_service
 
@@ -126,6 +126,71 @@ class StoryAgent:
             "title": title,
             "bedtime": bedtime,
             "max_chapters": max_chapters,
+        }
+
+    async def resume(self, story_id: str) -> dict[str, Any]:
+        """Rebuild a session for an unfinished story, e.g. after a server restart.
+
+        The new session has no `pending_chapter`: every chapter already stored is
+        handed back in the return value, so none is streamed a second time.
+
+        Raises KeyError if the story is unknown or has no chapters yet (nothing
+        to resume), and StoryComplete if it was already finished.
+        """
+        async with async_session_maker() as db:
+            story = await db.get(Story, story_id)
+            profile = await db.get(ChildProfile, story.child_id) if story else None
+        if story is None or not story.chapters:
+            raise KeyError(f"no resumable story {story_id}")
+        if story.completed:
+            raise StoryComplete("story is complete")
+
+        max_chapters = int(story.max_chapters)
+        chapters = [
+            {
+                **chapter,
+                # Chapters stored before bedtime mode lack is_final.
+                "is_final": chapter.get(
+                    "is_final", chapter.get("chapter_number", index) >= max_chapters
+                ),
+            }
+            for index, chapter in enumerate(story.chapters, start=1)
+        ]
+
+        session_id = str(uuid.uuid4())
+        context: dict[str, Any] = {
+            "session_id": session_id,
+            "story_id": story.id,
+            "child_id": story.child_id,
+            "child_name": profile.name if profile else "Explorer",
+            "character_name": story.character_name,
+            "character_archetype": story.character_archetype,
+            "world": story.world,
+            "theme": story.theme,
+            "age": profile.age if profile else 7,
+            "title": story.title,
+            "bedtime": bool(story.bedtime),
+            "max_chapters": max_chapters,
+            "chapters": chapters,
+            "choices": list(story.choices_made or []),
+            "curiosity_answers": list(story.curiosity_answers or []),
+            "started_at": as_utc(story.created_at).isoformat(),
+        }
+        await redis_service.set(session_id, context)
+
+        return {
+            "session_id": session_id,
+            "story_id": story.id,
+            "title": story.title,
+            "bedtime": context["bedtime"],
+            "max_chapters": max_chapters,
+            "setup": {
+                "character_name": story.character_name,
+                "character_archetype": story.character_archetype,
+                "world": story.world,
+                "theme": story.theme,
+            },
+            "chapters": list(chapters),
         }
 
     async def chapter(
@@ -402,6 +467,31 @@ class StoryAgent:
             f"{certificate['child_name']}.</footer>"
         )
         return "\n".join(parts)
+
+
+def as_utc(value: datetime) -> datetime:
+    """SQLite hands back naive datetimes even for timezone-aware columns; they are UTC."""
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def story_last_activity(story: Story) -> datetime:
+    """`updated_at`, or `created_at` for rows written before `updated_at` existed."""
+    return as_utc(story.updated_at or story.created_at)
+
+
+async def active_story_for_child(child_id: str) -> Story | None:
+    """The child's most recently active unfinished story that has a chapter."""
+    async with async_session_maker() as db:
+        result = await db.execute(
+            select(Story)
+            .where(Story.child_id == child_id, Story.completed.is_(False))
+            .order_by(
+                func.coalesce(Story.updated_at, Story.created_at).desc(),
+                Story.created_at.desc(),
+            )
+        )
+        # A story whose first chapter never got stored has nothing to resume.
+        return next((s for s in result.scalars() if s.chapters), None)
 
 
 async def stories_for_child(child_id: str) -> list[Story]:

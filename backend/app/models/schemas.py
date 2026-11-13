@@ -69,7 +69,8 @@ class Chapter(BaseModel):
     new_vocabulary: list[str]
     curiosity_question: str
     image_url: str
-    is_final: bool
+    # Chapters stored before bedtime mode have no is_final; resume fills it in.
+    is_final: bool = False
 
 
 class ChapterMeta(BaseModel):
@@ -83,7 +84,8 @@ class ChapterMeta(BaseModel):
     new_vocabulary: list[str]
     curiosity_question: str
     image_url: str
-    is_final: bool
+    # Chapters stored before bedtime mode have no is_final; resume fills it in.
+    is_final: bool = False
 
 
 # --- Story ------------------------------------------------------------------
@@ -103,6 +105,38 @@ class StoryStartResponse(BaseModel):
     title: str
     bedtime: bool
     max_chapters: int
+
+
+class ActiveStory(BaseModel):
+    """The child's most recent unfinished story, offered as "Continue"."""
+
+    story_id: str
+    title: str
+    chapter_count: int
+    max_chapters: int
+    bedtime: bool
+    updated_at: str
+
+
+class ResumeRequest(BaseModel):
+    story_id: str
+
+
+class ResumeSetup(BaseModel):
+    character_name: str
+    character_archetype: str
+    world: str
+    theme: str
+
+
+class ResumeResponse(BaseModel):
+    session_id: str
+    story_id: str
+    title: str
+    bedtime: bool
+    max_chapters: int
+    setup: ResumeSetup
+    chapters: list[Chapter]
 
 
 class ChoiceRequest(BaseModel):

@@ -13,6 +13,7 @@ against a clean database exactly like a first launch.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import sqlite3
@@ -142,6 +143,53 @@ def _seed_legacy_db(names: list[str]) -> None:
         db.commit()
 
 
+# A story written by the pre-bedtime code: no is_final on its chapters, and the
+# row has no bedtime / max_chapters / updated_at (the migration adds those).
+LEGACY_STORY_ID = "legacy-story-1"
+LEGACY_STORY_CREATED_AT = "2026-01-03 09:30:00.000000"
+
+
+def _legacy_chapter(number: int) -> dict:
+    return {
+        "chapter_number": number,
+        "chapter_title": f"Legacy chapter {number}",
+        "chapter_text": f"Legacy text for chapter {number}.",
+        "choices": ["Go left", "Go right", "Keep exploring"],
+        "scene_description": "A quiet glade.",
+        "mood": "wonder",
+        "new_vocabulary": ["glade"],
+        "curiosity_question": "What do you see?",
+        "image_url": "",
+    }
+
+
+def _seed_legacy_story(child_id: str, *, chapters: int) -> None:
+    with closing(sqlite3.connect(_DB_PATH)) as db:
+        db.execute(
+            "INSERT INTO stories (id, child_id, title, world, theme, character_name, "
+            "character_archetype, chapters, choices_made, curiosity_answers, "
+            "vocabulary_log, completed, created_at, duration_seconds) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                LEGACY_STORY_ID,
+                child_id,
+                "Luna and the Friendship of the Woods",
+                "forest",
+                "friendship",
+                "Luna",
+                "kind",
+                json.dumps([_legacy_chapter(n) for n in range(1, chapters + 1)]),
+                json.dumps(["Go left"] * (chapters - 1)),
+                json.dumps([]),
+                json.dumps([]),
+                0,
+                LEGACY_STORY_CREATED_AT,
+                0,
+            ),
+        )
+        db.commit()
+
+
 # --- fixtures -------------------------------------------------------------------
 
 
@@ -174,5 +222,14 @@ def legacy_db_client() -> Iterator[TestClient]:
 def legacy_db_client_no_shreyanvi() -> Iterator[TestClient]:
     """App started on an OLD-schema DB holding "Shreyu" (oldest) and "Maya"."""
     _seed_legacy_db(["Shreyu", "Maya"])
+    with _running_app() as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def legacy_db_client_with_story() -> Iterator[TestClient]:
+    """App started on an OLD-schema DB with "Shreyanvi" and one unfinished 2-chapter story."""
+    _seed_legacy_db(["Shreyanvi"])
+    _seed_legacy_story("legacy-0", chapters=2)
     with _running_app() as test_client:
         yield test_client
