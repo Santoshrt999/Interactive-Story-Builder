@@ -17,9 +17,16 @@ export function chapterLabel(current: number, max: number): string {
 }
 
 /**
- * The curiosity question is asked right after a choice, while the next chapter
- * streams. Nothing follows the final chapter, so no question opens for it.
+ * The curiosity question is asked right after a choice on chapter N, while
+ * chapter N+1 streams. In bedtime mode, when that next chapter is the last one
+ * (the goodnight chapter), the full-screen question would cover it, so it is
+ * skipped. Normal stories always ask.
  */
-export function shouldAskCuriosity(question: string | null | undefined, isFinal: boolean): boolean {
-  return Boolean(question) && !isFinal;
+export function shouldAskCuriosity(
+  question: string | null | undefined,
+  ctx: { bedtime: boolean; chapterNumber: number; maxChapters: number }
+): boolean {
+  if (!question) return false;
+  if (ctx.bedtime && ctx.chapterNumber + 1 >= ctx.maxChapters) return false;
+  return true;
 }

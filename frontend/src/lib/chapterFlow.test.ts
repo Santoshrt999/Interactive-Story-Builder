@@ -25,16 +25,24 @@ describe('chapterLabel', () => {
 });
 
 describe('shouldAskCuriosity', () => {
-  it('asks the chapter question after a choice', () => {
-    expect(shouldAskCuriosity('Why do stars twinkle?', false)).toBe(true);
+  const q = 'Why do stars twinkle?';
+
+  it('asks the chapter question after a choice in a normal story', () => {
+    expect(shouldAskCuriosity(q, { bedtime: false, chapterNumber: 2, maxChapters: 8 })).toBe(true);
   });
 
-  it('does not ask once the story is on its final chapter', () => {
-    expect(shouldAskCuriosity('Why do stars twinkle?', true)).toBe(false);
+  it('asks after chapter 1 of a bedtime story', () => {
+    expect(shouldAskCuriosity(q, { bedtime: true, chapterNumber: 1, maxChapters: 3 })).toBe(true);
+  });
+
+  it('skips the question when the next bedtime chapter is the goodnight chapter', () => {
+    expect(shouldAskCuriosity(q, { bedtime: true, chapterNumber: 2, maxChapters: 3 })).toBe(false);
   });
 
   it('does not ask when the chapter has no question', () => {
-    expect(shouldAskCuriosity('', false)).toBe(false);
-    expect(shouldAskCuriosity(undefined, false)).toBe(false);
+    const ctx = { bedtime: false, chapterNumber: 1, maxChapters: 8 };
+    expect(shouldAskCuriosity('', ctx)).toBe(false);
+    expect(shouldAskCuriosity(undefined, ctx)).toBe(false);
+    expect(shouldAskCuriosity(null, ctx)).toBe(false);
   });
 });

@@ -55,7 +55,8 @@ export function Story() {
   // with the first choice.
   useEffect(() => {
     if (!sessionId) {
-      navigate('/setup');
+      // A refresh loses the session: land on Home, where "Continue" waits.
+      navigate('/', { replace: true });
       return;
     }
     if (resumed) return;
@@ -144,7 +145,11 @@ export function Story() {
     mutationFn: api.endStory,
     onSuccess: (res) => {
       audio.stop();
-      // A finished story is no longer one to "Continue".
+      // A finished story is no longer one to "Continue": clear this child's card at
+      // once (so Home never flashes it), then refetch any other children's.
+      if (activeProfile) {
+        queryClient.setQueryData([...ACTIVE_STORY_KEY, activeProfile.id], null);
+      }
       void queryClient.invalidateQueries({ queryKey: ACTIVE_STORY_KEY });
       setCertificate(res);
     },
@@ -156,14 +161,21 @@ export function Story() {
       recordChoice(choice);
       audio.stop();
       const question = meta?.curiosity_question;
-      // Show the curiosity question first (after a choice), then advance.
-      // (The final chapter has no choices, so this never opens a question after it.)
-      if (question && shouldAskCuriosity(question, meta?.is_final ?? false)) {
+      // Show the curiosity question first (after a choice), then advance. In bedtime
+      // it is skipped when the next chapter is the goodnight chapter.
+      if (
+        question &&
+        shouldAskCuriosity(question, {
+          bedtime,
+          chapterNumber: meta?.chapter_number ?? 0,
+          maxChapters,
+        })
+      ) {
         openCuriosity(question);
       }
       choiceMutation.mutate({ session_id: sessionId, choice });
     },
-    [sessionId, meta, recordChoice, openCuriosity, choiceMutation, audio]
+    [sessionId, meta, bedtime, maxChapters, recordChoice, openCuriosity, choiceMutation, audio]
   );
 
   const handleCuriosityAnswer = (answer: string) => {
@@ -317,7 +329,11 @@ export function Story() {
                   onClick={handleEnd}
                   disabled={endMutation.isPending}
                 >
-                  {endMutation.isPending ? 'Wrapping up…' : 'Goodnight 🌙 — see your storybook'}
+                  {endMutation.isPending
+                    ? 'Wrapping up…'
+                    : bedtime
+                      ? 'Goodnight 🌙 — see your storybook'
+                      : 'The End ✨ — see your storybook'}
                 </Button>
                 {endMutation.isError && (
                   <p role="alert" className="px-1 text-blossom">
